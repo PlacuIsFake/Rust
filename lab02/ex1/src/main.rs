@@ -2,9 +2,9 @@ fn add_chars_n(mut s: String, ch: char, n: i32) -> String {
     let mut i = 0;
     while i < n {
         s.push(ch);
-        i = i + 1;
+        i += 1;
     }
-    return s;
+    s
 }
 fn main() {
     let mut s = String::from("");
@@ -16,5 +16,5 @@ fn main() {
         i += 1;
     }
 
-    print!("{}", s);
+    print!("{s}");
 }

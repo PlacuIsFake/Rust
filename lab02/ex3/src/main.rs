@@ -25,17 +25,15 @@ fn add_integer(s: &mut String, mut n: i32) {
         n /= 10;
     }
     if nr_cif % 3 == 1 && nr_cif != 1 {
-        s.push(((ogl % 10) as u8 + '0' as u8) as char);
-        ogl = ogl / 10;
+        s.push(((ogl % 10) as u8 + b'0') as char);
+        ogl /= 10;
         s.push('_');
-    } else {
-        if nr_cif % 3 == 2 && nr_cif != 2 {
-            s.push(((ogl % 10) as u8 + '0' as u8) as char);
-            ogl = ogl / 10;
-            s.push(((ogl % 10) as u8 + '0' as u8) as char);
-            ogl = ogl / 10;
-            s.push('_');
-        }
+    } else if nr_cif % 3 == 2 && nr_cif != 2 {
+        s.push(((ogl % 10) as u8 + b'0') as char);
+        ogl /= 10;
+        s.push(((ogl % 10) as u8 + b'0') as char);
+        ogl /= 10;
+        s.push('_');
     }
     let mut k = 0;
     while ogl > 0 {
@@ -44,7 +42,7 @@ fn add_integer(s: &mut String, mut n: i32) {
             k = 0;
         }
         let cif = ogl % 10;
-        s.push((cif as u8 + '0' as u8) as char);
+        s.push((cif as u8 + b'0') as char);
         ogl /= 10;
         k += 1;
     }
@@ -71,7 +69,7 @@ fn add_float(s: &mut String, n: f64) {
         let cif = (copy as i32) % 10;
         copy -= cif as f64;
         nr_cif_before_dot -= 1;
-        s.push((cif as u8 + '0' as u8) as char);
+        s.push((cif as u8 + b'0') as char);
         if nr_cif_before_dot == 0 {
             s.push('.');
         }
@@ -113,5 +111,5 @@ fn main() {
     add_str(mut_ref_to_s, String::from("version"));
     add_space(mut_ref_to_s, 4);
     add_float(mut_ref_to_s, 2.0389); //am adaugat o cifra dupa virgula pentru a afisa 2.038 dupa executie
-    print!("{}", s);
+    print!("{s}");
 }

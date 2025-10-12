@@ -4,17 +4,17 @@ fn is_coprime(mut a: i32, mut b: i32) -> bool {
         a = b;
         b = r;
     }
-    return a == 1;
+    a == 1
 }
 fn main() {
     let mut x = 0;
     while x <= 100 {
         let mut y = 0;
         while y <= 100 {
-            if is_coprime(x, y) == true {
-                print!("{} and {} are coprime\n", x, y);
+            if is_coprime(x, y) {
+                println!("{x} and {y} are coprime");
             } else {
-                print!("{} and {} are not coprime\n", x, y);
+                println!("{x} and {y} are not coprime");
             }
             y += 1;
         }

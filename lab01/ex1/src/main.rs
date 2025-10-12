@@ -15,15 +15,15 @@ fn este_prim(x: i32) -> bool {
         }
         d += 2;
     }
-    return true;
+    true
 }
 fn main() {
     let mut x = 0;
     while x <= 100 {
         if este_prim(x) {
-            print!("{} este prim!\n", x);
+            println!("{x} este prim!");
         } else {
-            print!("{} nu este prim!\n", x);
+            println!("{x} nu este prim!");
         }
         x += 1;
     }
