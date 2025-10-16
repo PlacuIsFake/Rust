@@ -19,7 +19,7 @@ fn is_prime(x: u32) -> bool {
 }
 fn next_prime(x: u16) -> Option<u16> {
     let mut nxt: u32 = (x as u32) + 1;
-    while nxt < 65535 {
+    while nxt < u16::MAX as u32 {
         if is_prime(nxt) {
             return Some(nxt as u16);
         }
