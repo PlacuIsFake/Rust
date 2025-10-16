@@ -1,4 +1,3 @@
-///crate anyhow
 fn is_prime(x: u32) -> bool {
     if x < 2 {
         return false;
