@@ -73,6 +73,56 @@ fn add_n_mul(x:u32, y: u32) -> Result<u32, Errors> {
     Ok(rez)
 }
 
+fn to_uppercase(ch: char) -> Result<char, Errors> {
+    match ch {
+        'a'..='z' => Ok(((ch as u8) - b'a' + b'A') as char),
+        'A'..='Z' => Ok(ch),
+        _ => Err(Errors::NotLetter),
+    }
+}
+fn to_lowercase(ch: char) -> Result<char, Errors> {
+    match ch {
+        'a'..='z' => Ok(ch),
+        'A'..='Z' => Ok(((ch as u8) - b'A' + b'a') as char),
+        _ => Err(Errors::NotLetter),
+    }
+}
+fn print_char(ch: char) -> Result<char, Errors> {
+    if ch.is_ascii_graphic() {
+        return Ok(ch);
+    }
+    Err(Errors::NotPrintable)
+}
+fn char_to_number(ch: char) -> Result<u8, Errors> {
+    if !ch.is_ascii() {
+        return Err(Errors::NotASCII);
+    }
+    match ch {
+        '0'..='9' => Ok(ch as u8 - b'0'),
+        _ => Err(Errors::NotDigit),
+    }
+}
+fn char_to_number_hex(ch: char) -> Result<u8, Errors> {
+    if !ch.is_ascii() {
+        return Err(Errors::NotASCII);
+    }
+    match ch {
+        '0'..='9' => Ok(ch as u8 - b'0'),
+        'A'..='F' => Ok(ch as u8 - b'A' + 10),
+        _ => Err(Errors::NotBase16Digit),
+    }
+}
+fn print_error(err: Errors) {
+    match err {
+        Errors::NotASCII => println!("Character is not ascii"),
+        Errors::NotDigit => println!("Character is not a digit"),
+        Errors::NotBase16Digit => println!("Character is not a base16 digit"),
+        Errors::NotLetter => println!("Character is not a letter"),
+        Errors::NotPrintable => println!("Character is not printable"),
+        Errors::Overflow => println!("Operation not possible in u32 : Overflow"),
+    }
+}
+
 fn main() {
     println!("Ex1:");
     let mut x = 1;
@@ -141,5 +191,64 @@ fn main() {
     }
 
     println!("\nEx4:");
-
+    match to_uppercase('a') {
+        Ok(ch) => println!("Uppercase: 'a' -> '{ch}'"),
+        Err(err) => {print!("Uppercase: ('a') "); print_error(err);},
+    }
+    match to_uppercase('B') {
+        Ok(ch) => println!("Uppercase: 'B' -> '{ch}'"),
+        Err(err) => {print!("Uppercase: ('B') "); print_error(err);},
+    }
+    match to_uppercase('6') {
+        Ok(ch) => println!("Uppercase: '6' -> '{ch}'"),
+        Err(err) => {print!("Uppercase: ('6') "); print_error(err);},
+    }
+    match to_lowercase('C') {
+        Ok(ch) => println!("Lowercase: 'C' -> '{ch}'"),
+        Err(err) => {print!("Lowercase: ('C') "); print_error(err);},
+    }
+    match to_lowercase('d') {
+        Ok(ch) => println!("Lowercase: 'd' -> '{ch}'"),
+        Err(err) => {print!("Lowercase: ('d') "); print_error(err);},
+    }
+    match to_lowercase('.') {
+        Ok(ch) => println!("Lowercase: '.' -> '{ch}'"),
+        Err(err) => {print!("Lowercase: ('.') "); print_error(err);},
+    }
+    match print_char('s') {
+        Ok(ch) => println!("{ch}"),
+        Err(err) => print_error(err),
+    }
+    match print_char('\n') {
+        Ok(ch) => println!("{ch}"),
+        Err(err) => print_error(err),
+    }
+    match char_to_number('9') {
+        Ok(x) => println!("To number: '9' -> {x}"),
+        Err(err) => {print!("To number: ('9') "); print_error(err);},
+    }
+    match char_to_number('b') {
+        Ok(x) => println!("To number: 'b' -> {x}"),
+        Err(err) => {print!("To number: ('b') "); print_error(err);},
+    }
+    match char_to_number('🦀') {
+        Ok(x) => println!("To number: '🦀' -> {x}"),
+        Err(err) => {print!("To number: ('🦀') "); print_error(err);},
+    }
+    match char_to_number_hex('0') {
+        Ok(x) => println!("To Number Hex: '0' -> {x:X}"),
+        Err(err) => {print!("To Number Hex: ('0') "); print_error(err);},
+    }
+    match char_to_number_hex('D') {
+        Ok(x) => println!("To Number Hex: 'D' -> {x:X}"),
+        Err(err) => {print!("To Number Hex: ('D') "); print_error(err);},
+    }
+    match char_to_number_hex('G') {
+        Ok(x) => println!("To Number Hex: 'G' -> {x:X}"),
+        Err(err) => {print!("To Number Hex: ('a') "); print_error(err);},
+    }
+    match char_to_number_hex('🦀') {
+        Ok(x) => println!("To Number Hex: '🦀' -> {x:X}"),
+        Err(err) => {print!("To Number Hex: ('🦀') "); print_error(err);},
+    }
 }
