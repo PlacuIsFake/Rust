@@ -637,8 +637,6 @@ fn main() {
     match input.trim_end() {
         "y" => println!("Perfect!"),
         "Y" => println!("Perfect!"),
-        "d" => println!("Perfect!"),
-        "D" => println!("Perfect!"),
         "n" => {
             println!("Then I will use this deck.");
             symbols = false;
@@ -738,7 +736,17 @@ fn main() {
         }
         _ => {println!("\n{}", deck[nr as usize].1); panic!("The deck is corupted")},
     }
-    println!("\n Thank you for your attention");
+    println!();
+    input = String::from("");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+    match input.trim_end() {
+        "y" => println!("Thank you for your attention"),
+        "Y" => println!("Thank you for your attention"),
+        "n" => panic!("It did not work somehow"),
+        "N" => panic!("It did not work somehow"),
+        _ => (),
+    }
 }
 
     
