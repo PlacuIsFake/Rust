@@ -1,3 +1,7 @@
+use std::io::Write;
+
+use rand::seq::SliceRandom;
+
 #[derive(Debug)]
 enum Errors {
     Overflow,
@@ -6,6 +10,7 @@ enum Errors {
     NotBase16Digit,
     NotLetter,
     NotPrintable,
+    Not2DigitNumber,
 }
 
 fn is_prime(x: u32) -> bool {
@@ -120,6 +125,356 @@ fn print_error(err: Errors) {
         Errors::NotLetter => println!("Character is not a letter"),
         Errors::NotPrintable => println!("Character is not printable"),
         Errors::Overflow => println!("Operation not possible in u32 : Overflow"),
+        Errors::Not2DigitNumber => println!("The string is not a whole number with 2 or less digits"),
+    }
+}
+
+fn text_to_number(s: &mut str) -> Result<u8, Errors> {
+    let mut nr = 0;
+    if s.trim().len() > 2 {
+        return Err(Errors::Not2DigitNumber);
+    }
+    for ch in s.trim().chars(){
+        let d = char_to_number(ch)?;
+        nr = nr * 10 + d;
+    }
+    Ok(nr)
+}
+fn init(d: &mut [(u8, char)]) {
+    let mut k = 0;
+    let mut i = 8;
+    d[k].0 = 1;
+    d[k].1 = 'S';
+    k += 1;
+    while i <= 13 {
+        d[k].0 = i;
+        d[k].1 = 'S';
+        i += 1;
+        k += 1;
+    }
+    i = 8;
+    d[k].0 = 1;
+    d[k].1 = 'H';
+    k += 1;
+    while i <= 13 {
+        d[k].0 = i;
+        d[k].1 = 'H';
+        i += 1;
+        k += 1;
+    }
+    i = 8;
+    d[k].0 = 1;
+    d[k].1 = 'C';
+    k += 1;
+    while i <= 13 {
+        d[k].0 = i;
+        d[k].1 = 'C';
+        i += 1;
+        k += 1;
+    }
+    i = 8;
+    while i <= 12 {
+        d[k].0 = i;
+        d[k].1 = 'D';
+        i += 1;
+        k += 1;
+    }
+}
+fn print_deck (symbols: bool) {
+    if symbols {
+        let mut i = 8;
+        while i <= 10 {
+            print!("{i}♠️  ");
+            i += 1;
+        }
+        println!("J♠️  Q♠️  K♠️  A♠️");
+        i = 8;
+        while i <= 10 {
+            print!("{i}♥️  ");
+            i += 1;
+        }
+        println!("J♥️  Q♥️  K♥️  A♥️");
+        i = 8;
+        while i <= 10 {
+            print!("{i}♣️  ");
+            i += 1;
+        }
+        println!("J♣️  Q♣️  K♣️  A♣️");
+        i = 8;
+        while i <= 10 {
+            print!("{i}♦️  ");
+            i += 1;
+        }
+        println!("J♦️  Q♦️  K♦️");
+    }
+    else {
+        let mut i = 8;
+        while i <= 10 {
+            print!("{i}S  ");
+            i += 1;
+        }
+        println!("JS  QS  KS  AS");
+        i = 8;
+        while i <= 10 {
+            print!("{i}H  ");
+            i += 1;
+        }
+        println!("JH  QH  KH  AH");
+        i = 8;
+        while i <= 10 {
+            print!("{i}C  ");
+            i += 1;
+        }
+        println!("JC  QC  KC  AC");
+        i = 8;
+        while i <= 10 {
+            print!("{i}D  ");
+            i += 1;
+        }
+        println!("JD  QD  KD");
+    }
+}
+fn print_deck_3rows(d: &[(u8, char)], symbols: bool) {
+    let mut i = 0;
+    print!("1: ");
+    while i < 27 {
+        match d[i].0 {
+            1 => print!(" A"),
+            8..=9 => print!(" {}", d[i].0),
+            10 => print!("10"),
+            11 => print!(" J"),
+            12 => print!(" Q"),
+            13 => print!(" K"),
+            _ => {println!("\n{}", d[i].0); panic!("The deck is corupted")},
+        }
+        match d[i].1 {
+            'S' => match symbols {
+                true => print!("♠️  "),
+                false => print!("S  "),
+            }
+            'H' => match symbols {
+                true => print!("♥️  "),
+                false => print!("H  "),
+            }
+            'C' => match symbols {
+                true => print!("♣️  "),
+                false => print!("C  "),
+            }
+            'D' => match symbols {
+                true => print!("♦️  "),
+                false => print!("D  "),
+            }
+            _ => {println!("\n{}", d[i].1); panic!("The deck is corupted")},
+        }
+        i += 3;
+    }
+    print!("\n2: ");
+    i = 1;
+    while i < 27 {
+        match d[i].0 {
+            1 => print!(" A"),
+            8..=9 => print!(" {}", d[i].0),
+            10 => print!("10"),
+            11 => print!(" J"),
+            12 => print!(" Q"),
+            13 => print!(" K"),
+            _ => {println!("\n{}", d[i].0); panic!("The deck is corupted")},
+        }
+        match d[i].1 {
+            'S' => match symbols {
+                true => print!("♠️  "),
+                false => print!("S  "),
+            }
+            'H' => match symbols {
+                true => print!("♥️  "),
+                false => print!("H  "),
+            }
+            'C' => match symbols {
+                true => print!("♣️  "),
+                false => print!("C  "),
+            }
+            'D' => match symbols {
+                true => print!("♦️  "),
+                false => print!("D  "),
+            }
+            _ => {println!("\n{}", d[i].1); panic!("The deck is corupted")},
+        }
+        i += 3;
+    }
+    print!("\n3: ");
+    i = 2;
+    while i < 27 {
+        match d[i].0 {
+            1 => print!(" A"),
+            8..=9 => print!(" {}", d[i].0),
+            10 => print!("10"),
+            11 => print!(" J"),
+            12 => print!(" Q"),
+            13 => print!(" K"),
+            _ => {println!("\n{}", d[i].0); panic!("The deck is corupted")},
+        }
+        match d[i].1 {
+            'S' => match symbols {
+                true => print!("♠️  "),
+                false => print!("S  "),
+            }
+            'H' => match symbols {
+                true => print!("♥️  "),
+                false => print!("H  "),
+            }
+            'C' => match symbols {
+                true => print!("♣️  "),
+                false => print!("C  "),
+            }
+            'D' => match symbols {
+                true => print!("♦️  "),
+                false => print!("D  "),
+            }
+            _ => {println!("\n{}", d[i].1); panic!("The deck is corupted")},
+        }
+        i += 3;
+    }
+    println!();
+}
+fn magic(mut nr: u8) -> (u8, u8, u8) {
+    let nr1 = nr % 3;
+    nr /= 3;
+    let nr2 = nr % 3;
+    nr /= 3;
+    let nr3 = nr % 3;
+    (nr1, nr2, nr3)
+}
+fn magic_shuffle(d: &mut [(u8, char)], row:u8, nr: u8) {
+    let mut r1: [(u8, char); 9] = [(1, 'D'); 9];
+    let mut r2: [(u8, char); 9] = [(1, 'D'); 9];
+    let mut r3: [(u8, char); 9] = [(1, 'D'); 9];
+    let mut i;
+    let mut k;
+    i = 0;
+    k = 0;
+    while i < 27 {
+        r1[k] = d[i];
+        r2[k] = d[i + 1];
+        r3[k] = d[i + 2];
+        i += 3;
+        k += 1;
+    }
+    match row {
+        1 => {
+            match nr {
+                0 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r1[i];
+                        d[k + 9] = r2[i];
+                        d[k + 18] = r3[i];
+                        k += 1;
+                        i += 1;
+                    }
+                }
+                1 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r2[i];
+                        d[k + 9] = r1[i];
+                        d[k + 18] = r3[i];
+                        k += 1;
+                        i += 1;
+                    }
+                } 
+                2 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r2[i];
+                        d[k + 9] = r3[i];
+                        d[k + 18] = r1[i];
+                        k += 1;
+                        i += 1;
+                    }
+                }
+                _ => panic!("Magic number is not a base3 digit"),
+            }
+        }
+        2 => {
+            match nr {
+                0 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r2[i];
+                        d[k + 9] = r1[i];
+                        d[k + 18] = r3[i];
+                        k += 1;
+                        i += 1;
+                    }
+                }
+                1 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r3[i];
+                        d[k + 9] = r2[i];
+                        d[k + 18] = r1[i];
+                        k += 1;
+                        i += 1;
+                    }
+                } 
+                2 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r3[i];
+                        d[k + 9] = r1[i];
+                        d[k + 18] = r2[i];
+                        k += 1;
+                        i += 1;
+                    }
+                }
+                _ => panic!("Magic number is not a base3 digit"),
+            }
+        }
+        3 => {
+            match nr {
+                0 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r3[i];
+                        d[k + 9] = r2[i];
+                        d[k + 18] = r1[i];
+                        k += 1;
+                        i += 1;
+                    }
+                }
+                1 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r1[i];
+                        d[k + 9] = r3[i];
+                        d[k + 18] = r2[i];
+                        k += 1;
+                        i += 1;
+                    }
+                } 
+                2 => {
+                    let mut k = 0;
+                    let mut i = 0;
+                    while i < 9 {
+                        d[k] = r1[i];
+                        d[k + 9] = r2[i];
+                        d[k + 18] = r3[i];
+                        k += 1;
+                        i += 1;
+                    }
+                }
+                _ => panic!("Magic number is not a base3 digit"),
+            }
+        }
+        _ => panic!("Row out of bounds"),
     }
 }
 
@@ -251,4 +606,139 @@ fn main() {
         Ok(x) => println!("To Number Hex: '🦀' -> {x:X}"),
         Err(err) => {print!("To Number Hex: ('🦀') "); print_error(err);},
     }
+
+    println!("\nEx5:");
+    let mut nr = 0;
+    
+    while nr == 0 {
+        let mut input = String::from("");
+        print!("Choose a number between 1 and 27 (a whole number): ");
+        let _ = std::io::stdout().flush();
+        std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+        match input.trim_end() {
+            "" => {println!("If you're not goning to pick a number, I'll pick one for you."); nr = 1;},
+            _ => {
+                    match text_to_number(&mut input) {
+                        Ok(x) => {nr = x; if nr == 0 || nr > 27 {println!("Number is not between 1 and 27\n Let's try again"); nr = 0}},
+                        Err(err) => {print_error(err); println!("Let's try again.")
+                    }
+                }
+            }
+        }
+    }
+    let rounds = magic(nr - 1);
+    println!("Now pick a card from this deck. Any card.");
+    let mut symbols = true;
+    print_deck(symbols);
+    println!("Do you see the symbols? (y/n/q)");
+    let mut input = String::from("");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+    match input.trim_end() {
+        "y" => println!("Perfect!"),
+        "Y" => println!("Perfect!"),
+        "d" => println!("Perfect!"),
+        "D" => println!("Perfect!"),
+        "n" => {
+            println!("Then I will use this deck.");
+            symbols = false;
+            print_deck(symbols);
+        }
+        "N" => {
+            println!("Then I will use this deck.");
+            symbols = false;
+            print_deck(symbols);
+        }
+        "q" => return,
+        "Q" => return,
+        _ => {
+            println!("I'll take that as a no. We'll use this deck instead");
+            symbols = false;
+            print_deck(symbols);
+        }
+    }
+    println!("Did you pick a card? (y/n/q)");
+    input = String::from("");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+    match input.trim_end() {
+        "y" => println!("Perfect!"),
+        "Y" => println!("Perfect!"),
+        "d" => println!("Perfect!"),
+        "D" => println!("Perfect!"), 
+        _ => return,
+    }
+    println!("Now I'm going to shuffle the deck and place the cards in 3 rows.");
+    let mut deck : [(u8, char); 27] = [(1, 'D'); 27];
+    let mut rng = rand::rng();
+    init(&mut deck);
+    deck.shuffle(&mut rng);
+    print_deck_3rows(&deck, symbols);
+    println!("In which row is your card? (1/2/3/q)");
+    input = String::from("");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+    match input.trim_end() {
+        "1" => magic_shuffle(&mut deck, 1, rounds.0),
+        "2" => magic_shuffle(&mut deck, 2, rounds.0),
+        "3" => magic_shuffle(&mut deck, 3, rounds.0),
+        _ => return,
+    }
+    println!("We're gonna do this 2 more times");
+    print_deck_3rows(&deck, symbols);
+    println!("In which row is your card? (1/2/3/q)");
+    input = String::from("");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+    match input.trim_end() {
+        "1" => magic_shuffle(&mut deck, 1, rounds.1),
+        "2" => magic_shuffle(&mut deck, 2, rounds.1),
+        "3" => magic_shuffle(&mut deck, 3, rounds.1),
+        _ => return,
+    }
+    println!("Last time");
+    print_deck_3rows(&deck, symbols);
+    println!("In which row is your card? (1/2/3/q)");
+    input = String::from("");
+    let _ = std::io::stdout().flush();
+    std::io::stdin().read_line(&mut input).expect("Failed to read from stdin");
+    match input.trim_end() {
+        "1" => magic_shuffle(&mut deck, 1, rounds.2),
+        "2" => magic_shuffle(&mut deck, 2, rounds.2),
+        "3" => magic_shuffle(&mut deck, 3, rounds.2),
+        _ => return,
+    }
+    println!("Is this your card? (y/n/q)");
+    nr -= 1;
+    match deck[nr as usize].0 {
+        1 => print!(" A"),
+        8..=9 => print!(" {}", deck[nr as usize].0),
+        10 => print!("10"),
+        11 => print!(" J"),
+        12 => print!(" Q"),
+        13 => print!(" K"),
+        _ => {println!("\n{}", deck[nr as usize].0); panic!("The deck is corupted")},
+    }
+    match deck[nr as usize].1 {
+        'S' => match symbols {
+            true => print!("♠️  "),
+            false => print!("S  "),
+        }
+        'H' => match symbols {
+            true => print!("♥️  "),
+            false => print!("H  "),
+        }
+        'C' => match symbols {
+            true => print!("♣️  "),
+            false => print!("C  "),
+        }
+        'D' => match symbols {
+            true => print!("♦️  "),
+            false => print!("D  "),
+        }
+        _ => {println!("\n{}", deck[nr as usize].1); panic!("The deck is corupted")},
+    }
+    println!("\n Thank you for your attention");
 }
+
+    
