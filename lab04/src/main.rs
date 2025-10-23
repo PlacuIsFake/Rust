@@ -18,7 +18,26 @@ fn count_chars(s: &str) -> i32 {
     }
     cnt
 }
+
+fn rot13_cipher(s: &str) -> Result<String, &'static str> {
+    let mut new_s = String::from("");
+    for c in s.chars() {
+        if !c.is_ascii() {
+            return Err("Character is not ascii");
+        }
+        let mut new_c = '?';
+        match c {
+            'a'..='z' => new_c = (((c as u8 - b'a') + 13) % 26 + b'a') as char,
+            'A'..='Z' => new_c = (((c as u8 - b'A') + 13) % 26 + b'A') as char,
+            _ => {},
+        }
+        new_s.push(new_c);
+    }
+    Ok(new_s)
+}
+
 fn main() {
+    println!("Ex1:");
     let path = String::from("Text1.txt");
     let mut file_cont = String::from("");
     match read_file(&path) {
@@ -45,4 +64,10 @@ fn main() {
     }
     println!("The longest line considering the number of bytes is : {most_bytes_line}");
     println!("The longest line considering the number of actual characters is : {most_chars_line}");
+    println!("Ex2:");
+    let s = String::from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+    match rot13_cipher(s.as_str()) {
+        Ok(new_s) => println!("{new_s}"),
+        Err(e) => println!("{e}"),
+    }
 }
