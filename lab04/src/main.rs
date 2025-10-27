@@ -70,4 +70,51 @@ fn main() {
         Ok(new_s) => println!("{new_s}"),
         Err(e) => println!("{e}"),
     }
+
+    println!("Ex3:");
+    let path = String::from("Text3.txt");
+    let mut file_cont = String::from("");
+    match read_file(&path) {
+        Ok(x) => file_cont = x,
+        Err(e) => println!("{e:?}"),
+    }
+    let s = file_cont.as_str();
+    let mut trans = String::from("");
+    for cuv in s.split(" ") {
+        let t = match cuv {
+            "pt" => "pentru",
+            "ptr" => "pentru",
+            "dl" => "domnul",
+            "dna" => "doamna",
+            _ => cuv,
+        };
+        trans.push_str(t);
+        trans.push(' ');
+    }
+    println!("{trans}");
+
+    println!("Ex4:");
+    let path = String::from("/etc/hosts");
+    let mut file_cont = String::from("");
+    match read_file(&path) {
+        Ok(x) => file_cont = x,
+        Err(e) => println!("{e:?}"),
+    }
+    let s = file_cont.as_str();
+    for line in s.lines() {
+        let line = line.trim();
+        if ! line.starts_with("#") {
+            let mut it = line.split_whitespace();
+            let ip = it.next();
+            if let Some(ip) = ip {
+                loop {
+                    let name = it.next();
+                    match name {
+                        Some(c) => println!("{c} => {ip}"),
+                        None => break,
+                    }
+                }
+            }
+        }
+    }
 }
