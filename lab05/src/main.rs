@@ -1,4 +1,5 @@
 use std::{fs, io};
+use serde_derive::Deserialize;
 fn read_file(path: &str) -> Result<String, io::Error> {
     let s = fs::read_to_string(path)?;
     Ok(s)
@@ -93,8 +94,42 @@ fn ex2() {
     print(canvas);
 }
 
+#[derive(Debug, Deserialize, Clone)]
+struct Student {
+    name: String,
+    phone: String,
+    age: u32
+}
+
+fn ex3(){
+    println!("Ex3:");
+    let path = String::from("Text2.txt");
+    let mut file_cont = String::from("");
+    match read_file(&path) {
+        Ok(x) => file_cont = x,
+        Err(e) => println!("{e:?}"),
+    }
+    let s = file_cont.as_str();
+    let mut stud_min = Student { name: String::from(""), phone: String::from(""), age: u32::MAX };
+    let mut stud_max = Student { name: String::from(""), phone: String::from(""), age: u32::MIN };
+    for l in s.lines() {
+        let student: Student = match serde_json::from_str(l) {
+            Ok(s) => s,
+            Err(e) => {println!("Invalide line: {e:?}"); continue;},
+        };
+        if student.age > stud_max.age {
+            stud_max = student.clone();
+        }
+        if student.age < stud_min.age {
+            stud_min = student.clone();
+        }
+    }
+    println!("The oldest student is {}, {} years old. Phone number: {}", stud_max.name, stud_max.age, stud_max.phone);
+    println!("The youngest student is {}, {} years old. Phone number: {}", stud_min.name, stud_min.age, stud_min.phone);
+}
+
 fn main() {
     ex1();
     ex2();
-
+    ex3();
 }
