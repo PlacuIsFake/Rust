@@ -1,0 +1,19 @@
+ping
+png
+ping abc
+
+count
+count a b c
+count a
+count a             b
+   count a             b   
+
+times
+times
+TIMES
+times abc
+
+ferris
+🦀
+
+stop
