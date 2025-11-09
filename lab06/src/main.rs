@@ -1,4 +1,6 @@
-use std::{io, fs};
+use std::{fs, io};
+
+use rusqlite::Connection;
 trait Command {
     fn get_name(&self) -> &str {
         "Name"
@@ -9,7 +11,7 @@ trait Command {
 struct PingCommand {}
 struct CountCommand {}
 struct TimesCommand {
-    count: i32
+    count: i32,
 }
 struct FerrisCommand {}
 struct StopCommand {}
@@ -68,6 +70,123 @@ impl Command for StopCommand {
         std::process::exit(0);
     }
 }
+
+struct BookmarkCommand {}
+struct Bookmark {
+    name: String,
+    url: String,
+}
+impl Command for BookmarkCommand {
+    fn get_name(&self) -> &str {
+        "bk"
+    }
+    fn exec(&mut self, arg: &[&str]) {
+        let conn = match Connection::open("bookmarks.db") {
+            Ok(c) => c,
+            Err(err) => {
+                println!("Couldn't connect to database: {err}");
+                return;
+            }
+        };
+        let create = r"
+            create table if not exists bookmarks (
+                name text    not null,
+                url  text not null
+                );
+            ";
+        match conn.execute(create, ()) {
+            Ok(_) => (),
+            Err(err) => {
+                println!("Execution failed: {err}");
+                return;
+            }
+        };
+
+        let opt = match arg.first() {
+            Some(o) => o,
+            None => return,
+        };
+
+        match *opt {
+            "add" => {
+                let get = arg.get(1);
+                let nume = match get {
+                    Some(n) => n,
+                    None => return,
+                };
+                let get = arg.get(2);
+                let url = match get {
+                    Some(u) => u,
+                    None => return,
+                };
+                match conn.execute(
+                    "INSERT INTO bookmarks (name, url) VALUES (?1, ?2);",
+                    (nume, url),
+                ) {
+                    Ok(_) => (),
+                    Err(err) => {
+                        println!("Execution failed: {err}");
+                    }
+                };
+            }
+            "search" => {
+                let n = arg.get(1);
+                let search = match n {
+                    Some(w) => w,
+                    None => return,
+                };
+                let sql = format!("SELECT * FROM bookmarks WHERE name LIKE '%{search}%'");
+
+                let mut stmt = match conn.prepare(&sql) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("Couldn't prepare statement: {e}");
+                        return;
+                    }
+                };
+
+                let person_iter = match stmt.query_map([], |row| {
+                    let name: String = match row.get("name") {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!("Failed to get name: {e}");
+                            return Ok(Bookmark {
+                                name: "".to_string(),
+                                url: "".to_string(),
+                            }); // skip this row
+                        }
+                    };
+                    let url: String = match row.get("url") {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!("Failed to get url: {e}");
+                            return Ok(Bookmark {
+                                name: "".to_string(),
+                                url: "".to_string(),
+                            });
+                        }
+                    };
+                    Ok(Bookmark { name, url })
+                }) {
+                    Ok(iter) => iter,
+                    Err(e) => {
+                        println!("Query failed: {e}");
+                        return;
+                    }
+                };
+
+                for item in person_iter {
+                    match item {
+                        Ok(b) => println!("name={}, url={}", b.name, b.url),
+                        Err(e) => println!("Error reading row: {e}"),
+                    }
+                }
+            }
+            _ => (),
+        }
+    }
+}
+
 fn levensthein(s1: &str, s2: &str, n: usize, m: usize) -> usize {
     if n == 0 {
         return m;
@@ -87,13 +206,11 @@ fn levensthein(s1: &str, s2: &str, n: usize, m: usize) -> usize {
     let mut l1 = levensthein(s1, s2, n, m - 1);
     let l2 = levensthein(s1, s2, n - 1, m);
     let l3 = levensthein(s1, s2, n - 1, m - 1);
-    
-    if l1 > l2
-    {
+
+    if l1 > l2 {
         l1 = l2;
     }
-    if l1 > l3
-    {
+    if l1 > l3 {
         l1 = l3;
     }
     l1 + 1
@@ -103,7 +220,7 @@ fn read_file(path: &str) -> Result<String, io::Error> {
     Ok(s)
 }
 struct Terminal {
-    comms: Vec<Box<dyn Command>>
+    comms: Vec<Box<dyn Command>>,
 }
 impl Terminal {
     fn new() -> Self {
@@ -123,12 +240,16 @@ impl Terminal {
         let mut min = usize::MAX;
         let mut suggestion = "";
         for c in &self.comms {
-            let d = levensthein(c.get_name(), s_ref, c.get_name().chars().count(), s_ref.chars().count());
+            let d = levensthein(
+                c.get_name(),
+                s_ref,
+                c.get_name().chars().count(),
+                s_ref.chars().count(),
+            );
             if d < min {
                 min = d;
                 suggestion = c.get_name();
             }
-
         }
         println!("{s} is not a valid command. Did you want to write '{suggestion}'?")
     }
@@ -171,7 +292,7 @@ fn main() {
     terminal.register(Box::new(CountCommand {}));
     terminal.register(Box::new(FerrisCommand {}));
     terminal.register(Box::new(TimesCommand { count: 0 }));
+    terminal.register(Box::new(BookmarkCommand {}));
 
     terminal.run();
 }
-
