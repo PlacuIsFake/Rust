@@ -1,14 +1,14 @@
-use std::ops::{Add, Mul, Neg, Sub};
 use std::fmt::Display;
+use std::ops::{Add, Mul, Neg, Sub};
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 struct Complex {
     real: f64,
-    imag: f64
+    imag: f64,
 }
 impl Complex {
     fn new<T, U>(x: T, y: U) -> Self
-    where 
+    where
         f64: From<T> + From<U>,
     {
         let real = f64::from(x);
@@ -17,7 +17,10 @@ impl Complex {
     }
     fn conjugate(&mut self) -> Complex {
         self.imag *= -1.0;
-        Complex { real: self.real, imag: self.imag }
+        Complex {
+            real: self.real,
+            imag: self.imag,
+        }
     }
 }
 impl From<f64> for Complex {
@@ -28,10 +31,11 @@ impl From<f64> for Complex {
 impl From<i32> for Complex {
     fn from(value: i32) -> Self {
         Complex::new(value, 0)
-    }    
+    }
 }
 impl<T> Add<T> for Complex
-where Complex: From<T>
+where
+    Complex: From<T>,
 {
     type Output = Complex;
     fn add(self, rhs: T) -> Self::Output {
@@ -39,8 +43,9 @@ where Complex: From<T>
         Complex::new(self.real + a.real, self.imag + a.imag)
     }
 }
-impl<T> Sub<T> for Complex 
-where Complex: From<T>
+impl<T> Sub<T> for Complex
+where
+    Complex: From<T>,
 {
     type Output = Complex;
     fn sub(self, rhs: T) -> Self::Output {
@@ -49,19 +54,25 @@ where Complex: From<T>
     }
 }
 impl<T> Mul<T> for Complex
-where Complex: From<T>
+where
+    Complex: From<T>,
 {
     type Output = Complex;
     fn mul(self, rhs: T) -> Self::Output {
         let a = Complex::from(rhs);
-        Complex::new(self.real * a.real - self.imag * a.imag, self.real * a.imag + self.imag * a.real)
+        Complex::new(
+            self.real * a.real - self.imag * a.imag,
+            self.real * a.imag + self.imag * a.real,
+        )
     }
 }
-impl Neg for Complex 
-{
+impl Neg for Complex {
     type Output = Complex;
     fn neg(self) -> Self::Output {
-        Complex { real: -self.real, imag: -self.imag }
+        Complex {
+            real: -self.real,
+            imag: -self.imag,
+        }
     }
 }
 impl Display for Complex {
