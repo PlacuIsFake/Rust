@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await?;
     println!("{resp}");
 
-    println!("\n--- 2. Testing POST /users ---");
+    
     let new_user = CreateUser {
         username: "Pax".to_string(),
         password: "password".to_string(),
