@@ -6,8 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::{error::Error, sync::Arc};
-use crate::network_manager::session_manager::SessionManager;
-
+use crate::network_manager::{session_manager::SessionManager, database_manager};
 
 pub struct Server {
     session_manager: Arc<SessionManager>,

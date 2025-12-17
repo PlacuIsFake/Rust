@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 #[derive(Deserialize)]
 pub struct LoginReq {
-    username: String,
-    password: String,
+    pub username: String,
+    pub password: String,
 }
 #[derive(Serialize)]
 struct User{
