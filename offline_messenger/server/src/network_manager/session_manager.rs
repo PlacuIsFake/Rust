@@ -4,34 +4,12 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
 };
-use serde::{Deserialize, Serialize};
-use std::{sync::{Arc, Mutex}, error::Error, collections::HashMap};
+use std::{
+    collections::HashMap,
+    error::Error,
+    sync::{Arc, Mutex},
+};
 use uuid::Uuid;
-
-#[derive(Deserialize)]
-pub struct LoginReq {
-    pub username: String,
-    pub password: String,
-}
-#[derive(Serialize)]
-struct User{
-    id: u64,
-    username: String,
-    password: String,
-}
-#[derive(Deserialize)]
-struct NewMessage {
-    from: u64,
-    to: u64,
-    message: String,
-}
-#[derive(Serialize)]
-struct Message {
-    id: u64,
-    from: u64,
-    to: u64,
-    message: String,
-}
 
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<String, String>>>,
@@ -57,12 +35,11 @@ impl SessionManager {
             Some(user) => {
                 println!("Valid token for user {}", user.clone().to_string());
                 Some(user.to_string())
-            },
-            None => 
-            {
+            }
+            None => {
                 println!("Invalid token");
                 None
-            },
+            }
         }
     }
     pub fn close_session(&self, token: &str) -> bool {
@@ -72,7 +49,7 @@ impl SessionManager {
                 println!("{} logged out", user.clone().to_string());
                 true
             }
-            None => false
+            None => false,
         }
     }
 }
