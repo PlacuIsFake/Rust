@@ -14,7 +14,7 @@ impl DataBase {
 
         tokio::spawn(async move {
             if let Err(err) = connection.await {
-                println!("Error durring connection to the databse: {}", err);
+                println!("Error durring connection to the databse: {err}");
             }
         });
 
@@ -97,7 +97,7 @@ impl DataBase {
         if !exists {
             let resp = Response {
                 succes: false,
-                message: "Invalid username and/or passowed.".to_string(),
+                message: "Invalid username and/or password.".to_string(),
             };
             return Ok(resp);
         }
@@ -112,7 +112,7 @@ impl DataBase {
         sender: &str,
         receiver: &str,
         message: &str,
-    ) -> Result<bool, Error> {
+    ) -> Result<Response, Error> {
         let exists: bool = self
             .client
             .query_one(
@@ -122,7 +122,11 @@ impl DataBase {
             .await?
             .get(0);
         if !exists {
-            return Ok(false);
+            let resp = Response {
+                succes: false,
+                message: "The sender is not in the database".to_string()
+            };
+            return Ok(resp);
         }
         let exists: bool = self
             .client
@@ -133,14 +137,18 @@ impl DataBase {
             .await?
             .get(0);
         if !exists {
-            return Ok(false);
+            let resp = Response {
+                succes: false,
+                message: "The receiver is not in the database".to_string()
+            };
+            return Ok(resp);
         }
 
         let id_sender = match self
             .client
             .query("SELECT id_user FROM users WHERE username = $1", &[&sender])
             .await?
-            .get(0)
+            .first()
         {
             Some(r) => r.get(0),
             None => -1,
@@ -152,25 +160,36 @@ impl DataBase {
                 &[&receiver],
             )
             .await?
-            .get(0)
+            .first()
         {
             Some(r) => r.get(0),
             None => -1,
         };
+        if id_sender == -1 || id_receiver == -1 {
+            let resp = Response{
+                succes: false,
+                message: "Eroare in timpul salvarii mesajului".to_string()
+            };
+            return Ok(resp);
+        }
         self.client
             .execute(
                 "INSERT INTO messages (content, id_sender, id_receiver) VALUES ($1, $2, $3)",
                 &[&message, &id_sender, &id_receiver],
             )
             .await?;
-        Ok(true)
+        let resp = Response {
+            succes: true,
+            message: "Message saved".to_string()
+        };
+        Ok(resp)
     }
     pub async fn get_messages(
         &self,
         user1: &str,
         user2: &str,
         start: i32,
-        finisg: i32,
+        finish: i32,
     ) -> Result<Option<Vec<Row>>, Error> {
         let exists: bool = self
             .client
@@ -200,7 +219,7 @@ impl DataBase {
                             JOIN users u1 ON m.id_sender = u1.id_user 
                             JOIN users u2 ON m.id_receiver = u2.id_user 
                             WHERE (u1.username = $1 AND u2.username = $2) OR (u1.username = $1 AND u2.username = $2)
-                            ORDER BY data ASC)) WHERE rm BETWEEN $3 AND $4;", &[&user1, &user2]).await?;
+                            ORDER BY data ASC)) WHERE rm BETWEEN $3 AND $4;", &[&user1, &user2, &start, &finish]).await?;
         Ok(Some(row))
     }
 }

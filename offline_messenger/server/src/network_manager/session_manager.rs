@@ -1,12 +1,5 @@
-use axum::{
-    Json, Router,
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{get, post},
-};
 use std::{
     collections::HashMap,
-    error::Error,
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
@@ -33,7 +26,7 @@ impl SessionManager {
 
         match sessions.get(token) {
             Some(user) => {
-                println!("Valid token for user {}", user.clone().to_string());
+                println!("Valid token for user {}", user.clone());
                 Some(user.to_string())
             }
             None => {
@@ -46,7 +39,7 @@ impl SessionManager {
         let mut sessions = self.sessions.lock().unwrap();
         match sessions.remove(token) {
             Some(user) => {
-                println!("{} logged out", user.clone().to_string());
+                println!("{} logged out", user.clone());
                 true
             }
             None => false,
