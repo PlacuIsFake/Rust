@@ -9,8 +9,7 @@ pub struct DataBase {
 
 impl DataBase {
     pub async fn new() -> Result<Arc<Self>, Error> {
-        let (client, connection) =
-            tokio_postgres::connect("host=localhost user=offline_messenger", NoTls).await?;
+        let (client, connection) = tokio_postgres::connect("host=localhost user=postgres password=mysecretpassword dbname=postgres", NoTls).await?;
 
         tokio::spawn(async move {
             if let Err(err) = connection.await {
@@ -21,7 +20,7 @@ impl DataBase {
         client
             .execute(
                 r"CREATE TABLE IF NOT EXISTS users (
-                        id_user INT PRIMARY KEY,
+                        id_user INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
                         username TEXT NOT NULL,
                         password TEXT NOT NULL
                         );",
@@ -31,25 +30,13 @@ impl DataBase {
         client
             .execute(
                 r"CREATE TABLE IF NOT EXISTS messages (
-                        id_message INT PRIMARY KEY,
+                        id_message INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
                         id_sender INT NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
                         id_receiver INT NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
                         content TEXT NOT NULL,
                         date TIMESTAMP NOT NULL DEFAULT now(),
                         seen BOOL NOT NULL DEFAULT FALSE
                         );",
-                &[],
-            )
-            .await?;
-        client
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_users ON users(id_user);",
-                &[],
-            )
-            .await?;
-        client
-            .execute(
-                "CREATE INDEX IF NOT EXISTS idx_messages ON messages(id_message);",
                 &[],
             )
             .await?;
@@ -61,7 +48,7 @@ impl DataBase {
         let exists: bool = self
             .client
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
                 &[&user_info.username],
             )
             .await?
@@ -73,9 +60,10 @@ impl DataBase {
             };
             return Ok(resp);
         }
+        println!("Hmm...");
         self.client
             .execute(
-                "INSERT INTO users (username, password) VALUES ($1, $2)",
+                "INSERT INTO users (username, password) VALUES ($1, $2);",
                 &[&user_info.username, &user_info.password],
             )
             .await?;
@@ -89,7 +77,7 @@ impl DataBase {
         let exists: bool = self
             .client
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND password = $2)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1 AND password = $2);",
                 &[&user_info.username, &user_info.password],
             )
             .await?
@@ -116,7 +104,7 @@ impl DataBase {
         let exists: bool = self
             .client
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
                 &[&sender],
             )
             .await?
@@ -131,7 +119,7 @@ impl DataBase {
         let exists: bool = self
             .client
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
                 &[&receiver],
             )
             .await?
@@ -146,7 +134,7 @@ impl DataBase {
 
         let id_sender = match self
             .client
-            .query("SELECT id_user FROM users WHERE username = $1", &[&sender])
+            .query("SELECT id_user FROM users WHERE username = $1;", &[&sender])
             .await?
             .first()
         {
@@ -156,7 +144,7 @@ impl DataBase {
         let id_receiver = match self
             .client
             .query(
-                "SELECT id_user FROM users WHERE username = $1",
+                "SELECT id_user FROM users WHERE username = $1;",
                 &[&receiver],
             )
             .await?
@@ -174,7 +162,7 @@ impl DataBase {
         }
         self.client
             .execute(
-                "INSERT INTO messages (content, id_sender, id_receiver) VALUES ($1, $2, $3)",
+                "INSERT INTO messages (content, id_sender, id_receiver) VALUES ($1, $2, $3);",
                 &[&message, &id_sender, &id_receiver],
             )
             .await?;
@@ -194,7 +182,7 @@ impl DataBase {
         let exists: bool = self
             .client
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
                 &[&user1],
             )
             .await?
@@ -205,7 +193,7 @@ impl DataBase {
         let exists: bool = self
             .client
             .query_one(
-                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1)",
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
                 &[&user2],
             )
             .await?

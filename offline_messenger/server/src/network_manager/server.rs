@@ -55,7 +55,7 @@ impl Server {
             .route("/messenger/send_message", post(Handlers::send_message))
             .with_state(app_state.clone());
         let app = Router::new().merge(start_routes).merge(messenger_routes);
-        let config = RustlsConfig::from_pem_file(
+        let config = match RustlsConfig::from_pem_file(
             PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("certs")
                 .join("server.crt"),
@@ -63,7 +63,10 @@ impl Server {
                 .join("certs")
                 .join("server.key"),
         )
-        .await?;
+        .await {
+            Ok(config) => config,
+            Err(err) => panic!("Error, certs {err}")
+        };
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
         axum_server::bind_rustls(addr, config)

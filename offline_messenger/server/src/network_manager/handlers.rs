@@ -90,6 +90,7 @@ impl Handlers {
                         StatusCode::UNAUTHORIZED,
                         Json(json!({
                             "succes": r.succes,
+                            "token": "".to_string(),
                             "message": r.message,
                         })),
                     )
@@ -101,6 +102,7 @@ impl Handlers {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
                         "succes": false,
+                        "token": "".to_string(),
                         "message": "Internal server error".to_string(),
                     })),
                 )
