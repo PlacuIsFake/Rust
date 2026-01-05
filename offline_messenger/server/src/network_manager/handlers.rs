@@ -13,7 +13,14 @@ use serde_json::json;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::mpsc;
 
-use crate::network_manager::server::{AppState, InternalMessage};
+use crate::network_manager::server::{AppState};
+
+pub enum InternalMessage {
+    Notification { sender: String, content: String },
+    Chat { messages: Vec<(String, String)>},
+    Response { succes: bool, message: String },
+}
+
 
 #[derive(Deserialize, Clone)]
 pub struct SigninReq {
@@ -31,11 +38,36 @@ pub struct SessionInfo {
     pub token: String,
 }
 #[derive(Deserialize, Serialize, Clone)]
-pub struct ChatMessage {
-    pub from: String,
-    pub to: String,
-    pub message: String,
+#[serde(tag = "type")]
+enum WsMessage {
+    SendMessage {
+        from: String,
+        to: String,
+        message: String,
+    },
+    GetMessage {
+        from: String,
+        idx: i32,
+    },
+    
 }
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(tag = "type")]
+enum WsMessageBack {
+    Message {
+        from: String,
+        message: String,
+    },
+    Response {
+        succes: bool,
+        message: String,
+    },
+    Chat {
+        messages: Vec<(String, String)>,
+    }
+}
+
 #[derive(Serialize)]
 pub struct Response {
     pub succes: bool,
@@ -128,6 +160,7 @@ impl Handlers {
 
         let (tx, mut rx) = mpsc::unbounded_channel::<InternalMessage>();
 
+        let tx_clone = tx.clone();
         {
             let mut map = match app_state.map.lock() {
                 Ok(m) => m,
@@ -144,25 +177,177 @@ impl Handlers {
         let send_task = tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
                 match msg {
-                    InternalMessage::Chat {
+                    InternalMessage::Notification {
                         sender: s,
                         content: c,
                     } => {
-                        if sender
-                            .send(Message::Text(format!("From {s}: {c}").into()))
-                            .await
-                            .is_err()
+                        let r = WsMessageBack::Message { from: s, message: c };
+                        if let Ok(message) = serde_json::to_string(&r)
                         {
-                            break;
+                            match sender
+                                .send(Message::Text(message.into()))
+                                .await
+                            {
+                                Ok(_) => {},
+                                Err(err) =>
+                                {
+                                    println!("Error while sending message to client: {err}");
+                                    break;
+                                }
+                            }
                         }
                     }
-                    InternalMessage::Quit => break,
+                    InternalMessage::Response { succes: s, message: m } => {
+                        let r = WsMessageBack::Response { succes: s, message: m };
+                        if let Ok(message) = serde_json::to_string(&r)
+                        {
+                            match sender.send(Message::Text(message.into())).await {
+                                Ok(_) => {},
+                                Err(err) =>
+                                {
+                                    println!("Error while sending message to client: {err}");
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    InternalMessage::Chat { messages: chat_messages } => {
+                        let r = WsMessageBack::Chat { messages: chat_messages };
+                        if let Ok(chat) = serde_json::to_string(&r) {
+                            match sender.send(Message::Text(chat.into())).await {
+                                Ok(_) => {},
+                                Err(err) =>
+                                {
+                                    println!("Error while sending message to client: {err}");
+                                    break;
+                                }
+                            }
+                        }
+                    },
                 }
             }
         });
 
-        while let Some(Ok(_)) = receiver.next().await {
-            
+        while let Some(Ok(msg)) = receiver.next().await {
+            if let Message::Text(raw_json) = msg {
+                let message: Result<WsMessage, _> =  serde_json::from_str(&raw_json);
+                match message {
+                    Ok(WsMessage::SendMessage { from, to, message }) =>
+                    {
+                        println!("Sending message from {} to {}", from.clone(), to.clone());
+                        match app_state.database.send_message(&from, &to, &message).await {
+                            Ok(r) => match r.succes {
+                                    true => 
+                                    {
+                                        {
+                                            let map = match app_state.map.lock() {
+                                                Ok(m) => m,
+                                                Err(err) => {
+                                                    println!("Error while locking the map in app_state: {err}");
+                                                    match tx_clone.send(InternalMessage::Response { succes: false, message: "Internal server error".to_string()}) {
+                                                        Ok(_) => {},
+                                                        Err(err) => {
+                                                            println!("Error while sending the notification to the receiver: {err}");
+                                                        }
+                                                    }
+                                                    break;
+                                                }
+                                            };
+                                            if let Some(s) = map.get(&to) {
+                                                for tx in s.values() {
+                                                    match tx.send(InternalMessage::Notification { sender: from.clone(), content: message.clone() }) {
+                                                        Ok(_) => {},
+                                                        Err(err) => println!("Error while sending the notification to the receiver: {err}"),
+                                                    };
+                                                }
+                                            }
+                                        }
+                                       
+                                        match tx_clone.send(InternalMessage::Response { succes: r.succes, message: r.message })
+                                        {
+                                            Ok(_) => {},
+                                            Err(err) => 
+                                            {
+                                                println!("Error while sending error to client: {err}");
+                                                break;
+                                            },
+                                        }
+                                    
+                                    },
+                                    false => 
+                                    {
+                                        match tx_clone.send(InternalMessage::Response { succes: r.succes, message: r.message })
+                                        {
+                                            Ok(_) => {},
+                                            Err(err) => 
+                                            {
+                                                println!("Error while sending error to client: {err}");
+                                                break;
+                                            },
+                                        }   
+                                    }
+                                }
+                            Err(err) => {
+                                println!("Error while working with the database: {err}");
+                                
+                                match tx_clone.send(InternalMessage::Response { succes: false, message: "Internal server error".to_string()})
+                                {
+                                    Ok(_) => {},
+                                    Err(err) => 
+                                    {
+                                        println!("Error while sending error to client: {err}");
+                                        break;
+                                    }
+                                }
+                                
+                            },
+                        }
+                    },
+                    Ok(WsMessage::GetMessage { from , idx}) => {
+                        match app_state.database.get_messages(&session_info.username, &from, idx, idx + 50).await {
+                            Ok(Some(v)) => {
+                                let mut chat_messages: Vec<(String, String)> = Vec::new();
+                                for row in v {
+                                    chat_messages.push((row.get(1), row.get(0)));
+                                }
+                                match tx_clone.send(InternalMessage::Chat { messages: chat_messages })
+                                {
+                                    Ok(_) => {},
+                                    Err(err) => 
+                                    {
+                                        println!("Error while sending error to client: {err}");
+                                        break;
+                                    }
+                                }
+                            },
+                            Ok(None) => {},
+                            Err(err) => {
+                                println!("Error while getting the messages: {err}");
+                                match tx_clone.send(InternalMessage::Response { succes: false, message: "Internal server error".to_string() }) {
+                                    Ok(_) => {},
+                                    Err(err) => 
+                                    {
+                                        println!("Error while sending error to client: {err}");
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        println!("Error: {err}");
+                        match tx_clone.send(InternalMessage::Response { succes: false, message: err.to_string()})
+                        {
+                            Ok(_) => {},
+                            Err(err) => 
+                            {
+                                println!("Error while sending error to client: {err}");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         send_task.abort();
@@ -181,56 +366,6 @@ impl Handlers {
                 }
             }
         }
-    }
-    pub async fn send_message(
-        State(app_state): State<Arc<AppState>>,
-        Json(payload): Json<ChatMessage> 
-    ) -> impl IntoResponse {
-        println!("Sending message from {} to {}", payload.from.clone(), payload.to.clone());
-        match app_state.database.send_message(&payload.from, &payload.to, &payload.message).await {
-            Ok(r) => match r.succes {
-                    true => 
-                    {
-                        {
-                            let map = match app_state.map.lock() {
-                                Ok(m) => m,
-                                Err(err) => {
-                                    println!("Error while locking the map in app_state: {err}");
-                                    let resp = Response{
-                                        succes: false,
-                                        message: "Internal server error".to_string()
-                                    };
-                                    return (StatusCode::INTERNAL_SERVER_ERROR, Json(resp));
-                                }
-                            };
-                            if let Some(s) = map.get(&payload.to) {
-                                for tx in s.values() {
-                                    match tx.send(InternalMessage::Chat { sender: payload.from.clone(), content: payload.message.clone() }) {
-                                        Ok(_) => {},
-                                        Err(err) => {
-                                            println!("Error while sending the notification to the receiver: {err}");
-                                            let resp = Response{
-                                                succes: false,
-                                                message: "Internal server error".to_string()
-                                            };
-                                            return (StatusCode::INTERNAL_SERVER_ERROR, Json(resp));
-                                        }
-                                    };
-                                }
-                            }
-                        }
-                        (StatusCode::CREATED, Json(r))
-                    },
-                    false => (StatusCode::CONFLICT, Json(r))
-                }
-            Err(err) => {
-                println!("Error while working with the database: {err}");
-                let resp = Response {
-                    succes: false,
-                    message: "Internal server error".to_string()
-                };
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(resp))
-            },
-        }
+        app_state.session_manager.close_session(&session_info.token);
     }
 }

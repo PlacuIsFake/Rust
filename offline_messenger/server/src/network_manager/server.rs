@@ -1,9 +1,9 @@
 use crate::network_manager::{
-    database_manager::DataBase, handlers::Handlers, session_manager::SessionManager,
+    database_manager::DataBase, handlers::{Handlers, InternalMessage}, session_manager::SessionManager,
 };
 use axum::{
     Router,
-    routing::{get, post, any},
+    routing::{any, get, post},
 };
 use axum_server::tls_rustls::RustlsConfig;
 use std::{
@@ -14,11 +14,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tokio::sync::mpsc;
-
-pub enum InternalMessage {
-    Chat { sender: String, content: String },
-    Quit,
-}
 
 type UserTx = mpsc::UnboundedSender<InternalMessage>;
 type UserSessions = HashMap<String, UserTx>;
@@ -52,7 +47,6 @@ impl Server {
             .with_state(app_state.clone());
         let messenger_routes: Router = Router::new()
             .route("/messenger/ws", any(Handlers::ws_handler))
-            .route("/messenger/send_message", post(Handlers::send_message))
             .with_state(app_state.clone());
         let app = Router::new().merge(start_routes).merge(messenger_routes);
         let config = match RustlsConfig::from_pem_file(
@@ -63,9 +57,10 @@ impl Server {
                 .join("certs")
                 .join("server.key"),
         )
-        .await {
+        .await
+        {
             Ok(config) => config,
-            Err(err) => panic!("Error, certs {err}")
+            Err(err) => panic!("Error, certs {err}"),
         };
         let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 

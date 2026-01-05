@@ -9,7 +9,11 @@ pub struct DataBase {
 
 impl DataBase {
     pub async fn new() -> Result<Arc<Self>, Error> {
-        let (client, connection) = tokio_postgres::connect("host=localhost user=postgres password=mysecretpassword dbname=postgres", NoTls).await?;
+        let (client, connection) = tokio_postgres::connect(
+            "host=localhost user=postgres password=mysecretpassword dbname=postgres",
+            NoTls,
+        )
+        .await?;
 
         tokio::spawn(async move {
             if let Err(err) = connection.await {
@@ -31,8 +35,8 @@ impl DataBase {
             .execute(
                 r"CREATE TABLE IF NOT EXISTS messages (
                         id_message INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-                        id_sender INT NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
-                        id_receiver INT NOT NULL REFERENCES users(id_user) ON DELETE CASCADE,
+                        sender TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
+                        receiver TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
                         content TEXT NOT NULL,
                         date TIMESTAMP NOT NULL DEFAULT now(),
                         seen BOOL NOT NULL DEFAULT FALSE
@@ -112,7 +116,7 @@ impl DataBase {
         if !exists {
             let resp = Response {
                 succes: false,
-                message: "The sender is not in the database".to_string()
+                message: "The sender is not in the database".to_string(),
             };
             return Ok(resp);
         }
@@ -127,48 +131,21 @@ impl DataBase {
         if !exists {
             let resp = Response {
                 succes: false,
-                message: "The receiver is not in the database".to_string()
+                message: "The receiver is not in the database".to_string(),
             };
             return Ok(resp);
         }
 
-        let id_sender = match self
-            .client
-            .query("SELECT id_user FROM users WHERE username = $1;", &[&sender])
-            .await?
-            .first()
-        {
-            Some(r) => r.get(0),
-            None => -1,
-        };
-        let id_receiver = match self
-            .client
-            .query(
-                "SELECT id_user FROM users WHERE username = $1;",
-                &[&receiver],
-            )
-            .await?
-            .first()
-        {
-            Some(r) => r.get(0),
-            None => -1,
-        };
-        if id_sender == -1 || id_receiver == -1 {
-            let resp = Response{
-                succes: false,
-                message: "Eroare in timpul salvarii mesajului".to_string()
-            };
-            return Ok(resp);
-        }
+        
         self.client
             .execute(
-                "INSERT INTO messages (content, id_sender, id_receiver) VALUES ($1, $2, $3);",
-                &[&message, &id_sender, &id_receiver],
+                "INSERT INTO messages (content, sender, receiver) VALUES ($1, $2, $3);",
+                &[&message, &sender, &receiver],
             )
             .await?;
         let resp = Response {
             succes: true,
-            message: "Message saved".to_string()
+            message: "Message saved".to_string(),
         };
         Ok(resp)
     }
@@ -201,8 +178,8 @@ impl DataBase {
         if !exists {
             return Ok(None);
         }
-        let row = self.client.query(r"SELECT content FROM 
-                            (SELECT content, ROWNUM rm FROM 
+        let row = self.client.query(r"SELECT content, sender FROM 
+                            (SELECT content, sender, ROWNUM rm FROM 
                             (SELECT * FROM messages m 
                             JOIN users u1 ON m.id_sender = u1.id_user 
                             JOIN users u2 ON m.id_receiver = u2.id_user 
