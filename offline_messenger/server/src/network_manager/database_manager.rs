@@ -24,8 +24,7 @@ impl DataBase {
         client
             .execute(
                 r"CREATE TABLE IF NOT EXISTS users (
-                        id_user INT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-                        username TEXT NOT NULL,
+                        username TEXT PRIMARY KEY,
                         password TEXT NOT NULL
                         );",
                 &[],
@@ -39,7 +38,8 @@ impl DataBase {
                         receiver TEXT NOT NULL REFERENCES users(username) ON DELETE CASCADE,
                         content TEXT NOT NULL,
                         date TIMESTAMP NOT NULL DEFAULT now(),
-                        seen BOOL NOT NULL DEFAULT FALSE
+                        responding_to_msg TEXT,
+                        responding_to_user TEXT
                         );",
                 &[],
             )
@@ -136,7 +136,6 @@ impl DataBase {
             return Ok(resp);
         }
 
-        
         self.client
             .execute(
                 "INSERT INTO messages (content, sender, receiver) VALUES ($1, $2, $3);",
@@ -149,12 +148,62 @@ impl DataBase {
         };
         Ok(resp)
     }
+    pub async fn send_message_with_resp(
+        &self,
+        sender: &str,
+        receiver: &str,
+        message: &str,
+        resp_msg: &str,
+        resp_usr: &str,
+    ) -> Result<Response, Error> {
+        let exists: bool = self
+            .client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
+                &[&sender],
+            )
+            .await?
+            .get(0);
+        if !exists {
+            let resp = Response {
+                succes: false,
+                message: "The sender is not in the database".to_string(),
+            };
+            return Ok(resp);
+        }
+        let exists: bool = self
+            .client
+            .query_one(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE username = $1);",
+                &[&receiver],
+            )
+            .await?
+            .get(0);
+        if !exists {
+            let resp = Response {
+                succes: false,
+                message: "The receiver is not in the database".to_string(),
+            };
+            return Ok(resp);
+        }
+
+        self.client
+            .execute(
+                "INSERT INTO messages (content, sender, receiver, responding_to_msg, responding_to_user) VALUES ($1, $2, $3, $4, $5);",
+                &[&message, &sender, &receiver, &resp_msg, &resp_usr],
+            )
+            .await?;
+        let resp = Response {
+            succes: true,
+            message: "Message saved".to_string(),
+        };
+        Ok(resp)
+    }
     pub async fn get_messages(
         &self,
         user1: &str,
         user2: &str,
-        start: i32,
-        finish: i32,
+        offset: i64,
     ) -> Result<Option<Vec<Row>>, Error> {
         let exists: bool = self
             .client
@@ -178,13 +227,21 @@ impl DataBase {
         if !exists {
             return Ok(None);
         }
-        let row = self.client.query(r"SELECT content, sender FROM 
-                            (SELECT content, sender, ROWNUM rm FROM 
-                            (SELECT * FROM messages m 
-                            JOIN users u1 ON m.id_sender = u1.id_user 
-                            JOIN users u2 ON m.id_receiver = u2.id_user 
-                            WHERE (u1.username = $1 AND u2.username = $2) OR (u1.username = $1 AND u2.username = $2)
-                            ORDER BY data ASC)) WHERE rm BETWEEN $3 AND $4;", &[&user1, &user2, &start, &finish]).await?;
+        let row = self.client.query(r"SELECT content, sender, responding_to_msg, responding_to_user FROM 
+                            messages m JOIN users u1 ON m.sender = u1.username JOIN users u2 ON m.receiver = u2.username 
+                            WHERE (u1.username = $1 AND u2.username = $2) OR (u1.username = $2 AND u2.username = $1)
+                            ORDER BY date ASC LIMIT 50 OFFSET $3;", &[&user1, &user2, &offset]).await?;
+        Ok(Some(row))
+    }
+
+    pub async fn get_user_list(&self, user: &str) -> Result<Option<Vec<Row>>, Error> {
+        let row = self
+            .client
+            .query(
+                r"SELECT username FROM users WHERE username != $1 ORDER BY username ASC;",
+                &[&user],
+            )
+            .await?;
         Ok(Some(row))
     }
 }

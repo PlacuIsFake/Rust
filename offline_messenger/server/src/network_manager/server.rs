@@ -1,5 +1,7 @@
 use crate::network_manager::{
-    database_manager::DataBase, handlers::{Handlers, InternalMessage}, session_manager::SessionManager,
+    database_manager::DataBase,
+    handlers::{Handlers, InternalMessage},
+    session_manager::SessionManager,
 };
 use axum::{
     Router,
@@ -46,7 +48,7 @@ impl Server {
             .route("/signin", post(Handlers::signin))
             .with_state(app_state.clone());
         let messenger_routes: Router = Router::new()
-            .route("/messenger/ws", any(Handlers::ws_handler))
+            .route("/ws", any(Handlers::ws_handler))
             .with_state(app_state.clone());
         let app = Router::new().merge(start_routes).merge(messenger_routes);
         let config = match RustlsConfig::from_pem_file(

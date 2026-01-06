@@ -1,48 +1,213 @@
+use core::f32;
+use eframe::egui;
+use futures_util::{StreamExt, SinkExt};
 use reqwest::Certificate;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, sync::mpsc::{Receiver, Sender, channel}};
-use eframe::egui;
+use tokio_tungstenite::{connect_async_tls_with_config};
+use uuid;
+use std::{
+    fs, path::PathBuf, sync::mpsc::{Receiver, Sender, channel}
+};
 
 #[derive(Deserialize, Serialize, Clone)]
-pub struct SigninReq {
-    pub username: String,
-    pub password: String,
+struct SigninReq {
+    username: String,
+    password: String,
 }
 #[derive(Deserialize, Serialize, Clone)]
-pub struct LoginReq {
-    pub username: String,
-    pub password: String,
+struct LoginReq {
+    username: String,
+    password: String,
 }
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SessionInfo {
-    pub username: String,
-    pub token: String,
+struct SessionInfo {
+    username: String,
+    token: String,
 }
 #[derive(Deserialize, Serialize, Clone)]
-pub struct ChatMessage {
-    pub from: String,
-    pub to: String,
-    pub message: String,
+struct ChatMessage {
+    id: String,
+    from: String,
+    to: String,
+    message: String,
+    resp_msg: Option<String>,
+    resp_user: Option<String>,
+}
+#[derive(Clone, PartialEq)]
+enum MessageStatus {
+    Sending,
+    Sent,
+    Failed,
+}
+struct OnScreenMessage {
+    id: String,
+    from: String,
+    message: String,
+    resp_msg: Option<String>,
+    resp_usr: Option<String>,
+    status: MessageStatus,
 }
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Response {
-    pub succes: bool,
-    pub message: String,
+struct Response {
+    succes: bool,
+    message: String,
 }
 #[derive(Serialize, Deserialize, Clone)]
-pub struct LoginResp {
-    pub succes: bool,
-    pub token: String,
-    pub message: String,
+struct LoginResp {
+    succes: bool,
+    token: String,
+    message: String,
 }
 
-pub enum Event {
+enum LoginEvent {
     Login(String),
-    Error(String)
+    Error(String),
+    ServerRespones((String, bool, String)),
+    ChatDump(Vec<(String, String, Option<String>, Option<String>)>),
+    NewMessage(ChatMessage),
+    TheList(Vec<String>),
+}
+enum Event {
+    NewMessage(ChatMessage),
+    ChangeChat((String, i64)),
+    GetUsersList(String),
 }
 enum Page {
     Login,
-    MainApp
+    MainApp,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(tag = "type")]
+enum WsMessage {
+    SendMessage {
+        id: String,
+        from: String,
+        to: String,
+        message: String,
+        resp_msg: Option<String>,
+        resp_user: Option<String>,
+    },
+    GetMessage {
+        from: String,
+        idx: i64,
+    },
+    GetUserList {
+        user: String,
+    },
+}
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(tag = "type")]
+enum WsMessageBack {
+    Message {
+        from: String,
+        message: String,
+        resp_msg: Option<String>,
+        resp_user: Option<String>,
+    },
+    Response {
+        id: String,
+        succes: bool,
+        message: String,
+    },
+    Chat {
+        messages: Vec<(String, String, Option<String>, Option<String>)>,
+    },
+    UserList {
+        list: Vec<String>,
+    },
+}
+
+fn start_websocket(
+    session_info: SessionInfo,
+    ctx: egui::Context,
+    gui_sender: Sender<LoginEvent>,
+) -> Option<tokio::sync::mpsc::Sender<Event>> {
+    let (gui_msg_tx, mut gui_msg_rx) = tokio::sync::mpsc::channel::<Event>(32);
+    tokio::spawn(async move {
+        let url = "wss://127.0.0.1:3000/ws";
+        let connector = match native_tls::TlsConnector::builder().danger_accept_invalid_certs(true).build()
+        {
+            Ok(c) => c,
+            Err(err) => {
+                println!("Error while building connector: {err}");
+                return;
+            },
+        };
+
+        let conn = tokio_tungstenite::Connector::NativeTls(connector);
+
+        match connect_async_tls_with_config(url, None, false, Some(conn)).await {
+            Ok((ws_stream, _)) => {
+                let (mut wr, mut rd) = ws_stream.split();
+                let session_info_clone = session_info.clone();
+                tokio::spawn(async move {
+                    
+                    if let Ok(msg_back) = serde_json::to_string(&session_info){
+                        let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                    }
+
+                    while let Some(msg) = gui_msg_rx.recv().await {
+                        match msg {
+                            Event::NewMessage(c) => {
+                                let ceva = WsMessage::SendMessage { id: c.id, from: c.from, to: c.to, message: c.message, resp_msg: c.resp_msg, resp_user: c.resp_user };
+                                if let Ok(msg_back) = serde_json::to_string(&ceva)
+                                {
+                                    let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                                }
+                            }
+                            Event::ChangeChat(c) => {
+                                let ceva = WsMessage::GetMessage { from: c.0, idx: c.1 };
+                                if let Ok(msg_back) = serde_json::to_string(&ceva)
+                                {
+                                    let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                                }
+                            },
+                            Event::GetUsersList(user) => {
+                                let ceva = WsMessage::GetUserList { user };
+                                if let Ok(msg_back) = serde_json::to_string(&ceva)
+                                {
+                                    let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                while let Some(Ok(msg)) = rd.next().await {
+                    if let tokio_tungstenite::tungstenite::Message::Text(raw_json) = msg {
+                        let message: Result<WsMessageBack, _> = serde_json::from_str(&raw_json);
+                        match message {
+                            Ok(WsMessageBack::Message { from: msg_from, message: msg_content, resp_msg: r_m, resp_user: r_u}) => {
+                                let rand_id = format!("{}", uuid::Uuid::new_v4());
+                                let _ = gui_sender.send(LoginEvent::NewMessage(ChatMessage { id: rand_id, from: msg_from, to: session_info_clone.username.clone(), message: msg_content, resp_msg: r_m, resp_user: r_u }));
+                            },
+                            Ok(WsMessageBack::Response { id, succes, message }) =>
+                            {
+                                let _ = gui_sender.send(LoginEvent::ServerRespones((id, succes, message)));
+                            },
+                            Ok(WsMessageBack::Chat { messages }) =>
+                            {
+                                let _ = gui_sender.send(LoginEvent::ChatDump(messages));
+                            },
+                            Ok(WsMessageBack::UserList { list }) => {
+                                let _ = gui_sender.send(LoginEvent::TheList(list));
+                            },
+                            Err(err) => {
+                                println!("Error while recieving message from server: {err}");
+                            },
+                        }
+                        ctx.request_repaint();
+                    }
+                }
+            },
+            Err(err) => {
+                println!("Connection failed: {err}");
+                return;
+            },
+        };
+    });
+    Some(gui_msg_tx)
 }
 
 struct MyApp {
@@ -50,29 +215,60 @@ struct MyApp {
     username: String,
     password: String,
     token: String,
-    rx: Receiver<Event>,
-    tx: Sender<Event>,
+
+    rx: Receiver<LoginEvent>,
+    tx: Sender<LoginEvent>,
     client: reqwest::Client,
-    err_msg: String
+
+    chat: Vec<OnScreenMessage>,
+    current_chat: String,
+    message_input: String,
+    selected_message: Option<String>,
+    selected_from: Option<String>,
+
+    contacts: Vec<String>,
+
+    ws_tx: Option<tokio::sync::mpsc::Sender<Event>>,
+
+    err_msg: String,
 }
 
 impl MyApp {
     fn new(client: reqwest::Client) -> Self {
         let (tx, rx) = channel();
-        Self { current_page: Page::Login, username: String::new(), password: String::new(), token: String::new(), rx, tx, client, err_msg: String::new() }
+        Self {
+            current_page: Page::Login,
+            username: String::new(),
+            password: String::new(),
+            token: String::new(),
+            rx,
+            tx,
+            client,
+            chat: Vec::new(),
+            current_chat: String::new(),
+            message_input: String::new(),
+            selected_message: None,
+            selected_from: None,
+            contacts: Vec::new(),
+            ws_tx: None,
+            err_msg: String::new(),
+        }
     }
-    fn show_login_screen(&mut self, ctx: &egui::Context)
-    {
+    fn show_login_screen(&mut self, ctx: &egui::Context) {
         if let Ok(event) = self.rx.try_recv() {
             match event {
-                Event::Login(token) => {
+                LoginEvent::Login(token) => {
                     self.token = token;
                     self.current_page = Page::MainApp;
+
+                    let tx = start_websocket(SessionInfo { username: self.username.clone(), token: self.token.clone() }, ctx.clone(), self.tx.clone());
+                    self.ws_tx = tx;
                     ctx.request_repaint();
                 }
-                Event::Error(err) => {
+                LoginEvent::Error(err) => {
                     self.err_msg = err;
                 }
+                _ => {},
             }
         }
 
@@ -92,7 +288,7 @@ impl MyApp {
                 if ui.button("Log In").clicked() {
                     let login = LoginReq {
                         username: self.username.clone(),
-                        password: self.password.clone()
+                        password: self.password.clone(),
                     };
                     let tx_clone = self.tx.clone();
                     let ctx_clone = ctx.clone();
@@ -100,28 +296,37 @@ impl MyApp {
 
                     tokio::spawn(async move {
                         let base_url = "https://127.0.0.1:3000";
-                        let resp = match client_clone.get(format!("{base_url}/login")).json(&login).send().await {
-                            Ok(snd ) => match snd.json::<LoginResp>().await {
+                        let resp = match client_clone
+                            .get(format!("{base_url}/login"))
+                            .json(&login)
+                            .send()
+                            .await
+                        {
+                            Ok(snd) => match snd.json::<LoginResp>().await {
                                 Ok(r) => r,
-                                Err(err) => {
-                                    LoginResp { succes: false, token: "".to_string(), message: format!("Invalid response from the server after login: {err}") }
-                                }
-                            }
-                            Err(err) => {
-                                LoginResp { succes: false, token: "".to_string(), message: format!("Error while sending the login request: {err}") }
-                            }
+                                Err(err) => LoginResp {
+                                    succes: false,
+                                    token: "".to_string(),
+                                    message: format!(
+                                        "Invalid response from the server after login: {err}"
+                                    ),
+                                },
+                            },
+                            Err(err) => LoginResp {
+                                succes: false,
+                                token: "".to_string(),
+                                message: format!("Error while sending the login request: {err}"),
+                            },
                         };
 
                         let result = match resp.succes {
-                            true => Event::Login(resp.token),
-                            false => Event::Error(resp.message),
+                            true => LoginEvent::Login(resp.token),
+                            false => LoginEvent::Error(resp.message),
                         };
 
                         let _ = tx_clone.send(result);
                         ctx_clone.request_repaint();
-                        
                     });
-
                 }
 
                 if !self.err_msg.is_empty() {
@@ -130,26 +335,112 @@ impl MyApp {
             });
         });
     }
-    fn show_main_app(&mut self, ctx: &egui::Context)
-    {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Something");
-            ui.label(format!("Logged in as: {}", self.username));
-            ui.add_space(20.0);
-            ui.label(format!("{}", self.token));
-
-            if ui.button("Log Out").clicked() {
-                // Clear sensitive data
-                self.password.clear();
-                // Switch back to login
-                self.current_page = Page::Login;
+    fn show_main_app(&mut self, ctx: &egui::Context) {
+        if let Some(tx) = &self.ws_tx {
+            let event = Event::GetUsersList(self.username.clone());
+            let _ = tx.try_send(event);
+        }
+        while let Ok(event) = self.rx.try_recv() {
+            match event {
+                LoginEvent::ServerRespones((id, success, message)) => {
+                    if let Some(msg) = self.chat.iter_mut().find(|m| m.id == id) {
+                        if success {
+                            msg.status = MessageStatus::Sent;
+                        } else {
+                            msg.status = MessageStatus::Failed;
+                            println!("Message {} failed: {}", id, message);
+                        }
+                    }
+                },
+                LoginEvent::ChatDump(messages) => {
+                    self.chat.clear();
+                    for e in messages {
+                        let rand_id = format!("{}", uuid::Uuid::new_v4());
+                        self.chat.push(OnScreenMessage { id: rand_id, from: e.0, message: e.1, status: MessageStatus::Sent, resp_msg: e.2, resp_usr: e.3 });
+                    }
+                },
+                LoginEvent::NewMessage(c) => {
+                    if c.from == self.current_chat {
+                        self.chat.push(OnScreenMessage { id: c.id, from: c.from, message: c.message, resp_msg: c.resp_msg, resp_usr: c.resp_user, status: MessageStatus::Sent });
+                    }
+                },
+                LoginEvent::TheList(list) => {
+                    self.contacts = list;
+                }
+                _ => {},
             }
+        }
+
+        egui::SidePanel::left("users_panel").show(ctx, |ui| {
+            ui.heading("Contacts");
+
+
+            for contact in &self.contacts {
+                if ui.button(contact).clicked() {
+                        if contact.to_string() != self.current_chat {
+                        self.current_chat = contact.to_string();
+                        self.chat.clear();
+
+                        if let Some(tx) = &self.ws_tx {
+                            let event = Event::ChangeChat((contact.to_string(), 0));
+                            let _ = tx.try_send(event);
+                        }
+                    }
+                }
+            }
+        });
+
+        egui::TopBottomPanel::bottom("input_panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let resp = ui.add(
+                    egui::TextEdit::singleline(&mut self.message_input)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Type a message..."),
+                );
+                if ui.button("Send").clicked()
+                    || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                {
+                    if !self.message_input.trim().is_empty() {
+                        let rand_id = format!("{}", uuid::Uuid::new_v4());
+
+                        self.chat.push(OnScreenMessage { id: rand_id.clone(), from: self.username.clone(), message: self.message_input.clone(), status: MessageStatus::Sending, resp_msg: self.selected_message.clone(), resp_usr: self.selected_from.clone()});
+
+                        if let Some(tx) = &self.ws_tx {
+                            let event = Event::NewMessage(ChatMessage { id: rand_id, from: self.username.clone(), to: self.current_chat.clone(), message: self.message_input.clone() , resp_msg:self.selected_message.clone(), resp_user: self.selected_from.clone() });
+                            let _ = tx.try_send(event);
+                        }
+                    }
+                }
+            });
+        });
+
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 10.0;
+
+                for msg in &self.chat {
+                    if msg.from == self.username {
+                        let text_color = match msg.status {
+                            MessageStatus::Sending => egui::Color32::GRAY,
+                            MessageStatus::Sent => egui::Color32::WHITE,
+                            MessageStatus::Failed => egui::Color32::RED,
+                        };
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui|{
+                            ui.label(egui::RichText::new(&msg.message).color(text_color));
+                        });
+                    } else {
+                      ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                        ui.label(egui::RichText::new(&msg.message).color(egui::Color32::LIGHT_GRAY));
+                      });
+                    }
+                }
+            });
         });
     }
 }
 
 impl eframe::App for MyApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         match self.current_page {
             Page::Login => self.show_login_screen(ctx),
             Page::MainApp => self.show_main_app(ctx),
@@ -159,7 +450,6 @@ impl eframe::App for MyApp {
 
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-
     let cert_bytes = match fs::read(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("certs")
@@ -194,9 +484,6 @@ async fn main() -> eframe::Result<()> {
     eframe::run_native(
         "My egui App",
         options,
-        Box::new(|cc| {
-            Ok(Box::<MyApp>::new(MyApp::new(client)))
-        }),
+        Box::new(|_cc| Ok(Box::<MyApp>::new(MyApp::new(client)))),
     )
-
 }
