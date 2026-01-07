@@ -18,6 +18,7 @@ use crate::network_manager::server::AppState;
 pub enum InternalMessage {
     Notification {
         sender: String,
+        reciever: String,
         content: String,
         resp_msg: Option<String>,
         resp_user: Option<String>,
@@ -55,6 +56,7 @@ pub struct SessionInfo {
 enum WsMessage {
     SendMessage {
         id: String,
+        token: String,
         from: String,
         to: String,
         message: String,
@@ -75,6 +77,7 @@ enum WsMessage {
 enum WsMessageBack {
     Message {
         from: String,
+        to: String,
         message: String,
         resp_msg: Option<String>,
         resp_user: Option<String>,
@@ -92,7 +95,7 @@ enum WsMessageBack {
     },
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Response {
     pub succes: bool,
     pub message: String,
@@ -173,8 +176,7 @@ impl Handlers {
     async fn handle_socket(socket: WebSocket, app_state: Arc<AppState>) {
         let (mut sender, mut receiver) = socket.split();
         let session_info;
-        if let Some(Ok(msg)) = receiver.next().await {
-            if let Message::Text(raw_json) = msg {
+        if let Some(Ok(Message::Text(raw_json))) = receiver.next().await {
                 let message: Result<SessionInfo, _> = serde_json::from_str(&raw_json);
                 session_info = match message {
                     Ok(m) => m,
@@ -183,10 +185,6 @@ impl Handlers {
                         return;
                     }
                 };
-            } else {
-                println!("Error at the start message: idk");
-                return;
-            }
         } else {
             println!("Error at the start message: idk");
             return;
@@ -214,12 +212,14 @@ impl Handlers {
                 match msg {
                     InternalMessage::Notification {
                         sender: s,
+                        reciever: r,
                         content: c,
                         resp_msg: r_m,
                         resp_user: r_u,
                     } => {
                         let r = WsMessageBack::Message {
                             from: s,
+                            to: r,
                             message: c,
                             resp_msg: r_m,
                             resp_user: r_u,
@@ -292,6 +292,7 @@ impl Handlers {
                 match message {
                     Ok(WsMessage::SendMessage {
                         id,
+                        token,
                         from,
                         to,
                         message,
@@ -334,6 +335,7 @@ impl Handlers {
                                                 for tx in s.values() {
                                                     match tx.send(InternalMessage::Notification {
                                                         sender: from.clone(),
+                                                        reciever: to.clone(),
                                                         content: message.clone(),
                                                         resp_msg: Some(r_m.clone()),
                                                         resp_user: Some(r_u.clone()),
@@ -343,6 +345,25 @@ impl Handlers {
                                                             "Error while sending the notification to the receiver: {err}"
                                                         ),
                                                     };
+                                                }
+                                            }
+                                            if let Some(s) = map.get(&from) {
+                                                for e in s {
+                                                    if *e.0 != token {
+                                                        let tx = e.1;
+                                                        match tx.send(InternalMessage::Notification {
+                                                            sender: from.clone(),
+                                                            reciever: to.clone(),
+                                                            content: message.clone(),
+                                                            resp_msg: Some(r_m.clone()),
+                                                            resp_user: Some(r_u.clone()),
+                                                        }) {
+                                                            Ok(_) => {}
+                                                            Err(err) => println!(
+                                                                "Error while sending the notification to the receiver: {err}"
+                                                            ),
+                                                        };
+                                                    }
                                                 }
                                             }
                                         }
@@ -424,6 +445,7 @@ impl Handlers {
                                                 for tx in s.values() {
                                                     match tx.send(InternalMessage::Notification {
                                                         sender: from.clone(),
+                                                        reciever: to.clone(),
                                                         content: message.clone(),
                                                         resp_msg: None,
                                                         resp_user: None,
@@ -433,6 +455,25 @@ impl Handlers {
                                                             "Error while sending the notification to the receiver: {err}"
                                                         ),
                                                     };
+                                                }
+                                            }
+                                            if let Some(s) = map.get(&from) {
+                                                for e in s {
+                                                    if *e.0 != token {
+                                                        let tx = e.1;
+                                                        match tx.send(InternalMessage::Notification {
+                                                            sender: from.clone(),
+                                                            reciever: to.clone(),
+                                                            content: message.clone(),
+                                                            resp_msg: None,
+                                                            resp_user: None,
+                                                        }) {
+                                                            Ok(_) => {}
+                                                            Err(err) => println!(
+                                                                "Error while sending the notification to the receiver: {err}"
+                                                            ),
+                                                        };
+                                                    }
                                                 }
                                             }
                                         }

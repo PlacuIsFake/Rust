@@ -4,7 +4,6 @@ use futures_util::{StreamExt, SinkExt};
 use reqwest::Certificate;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::{connect_async_tls_with_config};
-use uuid;
 use std::{
     fs, path::PathBuf, sync::mpsc::{Receiver, Sender, channel}
 };
@@ -60,9 +59,10 @@ struct LoginResp {
 }
 
 enum LoginEvent {
+    Signin,
     Login(String),
     Error(String),
-    ServerRespones((String, bool, String)),
+    ServerResponse((String, bool, String)),
     ChatDump(Vec<(String, String, Option<String>, Option<String>)>),
     NewMessage(ChatMessage),
     TheList(Vec<String>),
@@ -73,6 +73,7 @@ enum Event {
     GetUsersList(String),
 }
 enum Page {
+    Signin,
     Login,
     MainApp,
 }
@@ -82,6 +83,7 @@ enum Page {
 enum WsMessage {
     SendMessage {
         id: String,
+        token: String,
         from: String,
         to: String,
         message: String,
@@ -101,6 +103,7 @@ enum WsMessage {
 enum WsMessageBack {
     Message {
         from: String,
+        to: String,
         message: String,
         resp_msg: Option<String>,
         resp_user: Option<String>,
@@ -124,6 +127,7 @@ fn start_websocket(
     gui_sender: Sender<LoginEvent>,
 ) -> Option<tokio::sync::mpsc::Sender<Event>> {
     let (gui_msg_tx, mut gui_msg_rx) = tokio::sync::mpsc::channel::<Event>(32);
+    let session_info_clone = session_info.clone();
     tokio::spawn(async move {
         let url = "wss://127.0.0.1:3000/ws";
         let connector = match native_tls::TlsConnector::builder().danger_accept_invalid_certs(true).build()
@@ -140,7 +144,6 @@ fn start_websocket(
         match connect_async_tls_with_config(url, None, false, Some(conn)).await {
             Ok((ws_stream, _)) => {
                 let (mut wr, mut rd) = ws_stream.split();
-                let session_info_clone = session_info.clone();
                 tokio::spawn(async move {
                     
                     if let Ok(msg_back) = serde_json::to_string(&session_info){
@@ -150,7 +153,7 @@ fn start_websocket(
                     while let Some(msg) = gui_msg_rx.recv().await {
                         match msg {
                             Event::NewMessage(c) => {
-                                let ceva = WsMessage::SendMessage { id: c.id, from: c.from, to: c.to, message: c.message, resp_msg: c.resp_msg, resp_user: c.resp_user };
+                                let ceva = WsMessage::SendMessage { id: c.id, token: session_info_clone.token.clone(), from: c.from, to: c.to, message: c.message, resp_msg: c.resp_msg, resp_user: c.resp_user };
                                 if let Ok(msg_back) = serde_json::to_string(&ceva)
                                 {
                                     let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
@@ -178,13 +181,13 @@ fn start_websocket(
                     if let tokio_tungstenite::tungstenite::Message::Text(raw_json) = msg {
                         let message: Result<WsMessageBack, _> = serde_json::from_str(&raw_json);
                         match message {
-                            Ok(WsMessageBack::Message { from: msg_from, message: msg_content, resp_msg: r_m, resp_user: r_u}) => {
+                            Ok(WsMessageBack::Message { from: msg_from, to: msg_to, message: msg_content, resp_msg: r_m, resp_user: r_u}) => {
                                 let rand_id = format!("{}", uuid::Uuid::new_v4());
-                                let _ = gui_sender.send(LoginEvent::NewMessage(ChatMessage { id: rand_id, from: msg_from, to: session_info_clone.username.clone(), message: msg_content, resp_msg: r_m, resp_user: r_u }));
+                                let _ = gui_sender.send(LoginEvent::NewMessage(ChatMessage { id: rand_id, from: msg_from, to: msg_to, message: msg_content, resp_msg: r_m, resp_user: r_u }));
                             },
                             Ok(WsMessageBack::Response { id, succes, message }) =>
                             {
-                                let _ = gui_sender.send(LoginEvent::ServerRespones((id, succes, message)));
+                                let _ = gui_sender.send(LoginEvent::ServerResponse((id, succes, message)));
                             },
                             Ok(WsMessageBack::Chat { messages }) =>
                             {
@@ -203,7 +206,6 @@ fn start_websocket(
             },
             Err(err) => {
                 println!("Connection failed: {err}");
-                return;
             },
         };
     });
@@ -214,6 +216,7 @@ struct MyApp {
     current_page: Page,
     username: String,
     password: String,
+    password_again: String,
     token: String,
 
     rx: Receiver<LoginEvent>,
@@ -240,6 +243,7 @@ impl MyApp {
             current_page: Page::Login,
             username: String::new(),
             password: String::new(),
+            password_again: String::new(),
             token: String::new(),
             rx,
             tx,
@@ -253,6 +257,114 @@ impl MyApp {
             ws_tx: None,
             err_msg: String::new(),
         }
+    }
+    fn show_signin_screen(&mut self, ctx: &egui::Context) {
+        if let Ok(event) = self.rx.try_recv() {
+            match event {
+                LoginEvent::Signin => {
+                    self.current_page = Page::Login;
+                    self.username.clear();
+                    self.password.clear();
+                    self.password_again.clear();
+                    ctx.request_repaint();
+                }
+                LoginEvent::Error(err) => {
+                    self.err_msg = err;
+                    self.username.clear();
+                    self.password.clear();
+                    self.password_again.clear();
+                }
+                _ => {},
+            }
+        }
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(50.0);
+                    ui.heading("Rustcrab");
+                    ui.add_space(20.0);
+                    
+                    ui.label("Username");
+                    ui.text_edit_singleline(&mut self.username);
+                    ui.add_space(10.0);
+                    ui.label("Password");
+                    ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                    ui.add_space(10.0);
+
+                    ui.label("Password again");
+                    ui.add(egui::TextEdit::singleline(&mut self.password_again).password(true));
+                    ui.add_space(20.0);
+
+                    if ui.button("Sign in").clicked() {
+                        if self.password == self.password_again {
+                            let signin = SigninReq {
+                                username: self.username.clone(),
+                                password: self.password.clone(),
+                            };
+                            let tx_clone = self.tx.clone();
+                            let ctx_clone = ctx.clone();
+                            let client_clone = self.client.clone();
+
+                            tokio::spawn(async move {
+                                let base_url = "https://127.0.0.1:3000";
+                                let resp = match client_clone
+                                        .get(format!("{base_url}/signin"))
+                                        .json(&signin)
+                                        .send()
+                                        .await
+                                    {
+                                        Ok(snd) => match snd.json::<Response>().await {
+                                            Ok(r) => r,
+                                            Err(err) => Response {
+                                                succes: false,
+                                                message: format!(
+                                                    "Invalid response from the server after login: {err}"
+                                                ),
+                                            },
+                                        },
+                                        Err(err) => Response {
+                                            succes: false,
+                                            message: format!("Error while sending the login request: {err}"),
+                                        },
+                                    };
+
+                                    let result = match resp.succes {
+                                        true => LoginEvent::Signin,
+                                        false => LoginEvent::Error(resp.message),
+                                    };
+
+                                    let _ = tx_clone.send(result);
+                                    ctx_clone.request_repaint();
+                                });
+                        }
+                        else 
+                        {
+                            self.err_msg.clear();
+                            self.err_msg = "The two passwords are not identical".to_string();
+                            self.username.clear();
+                            self.password.clear();
+                            self.password_again.clear();
+                            ctx.request_repaint();
+                        }
+                    }
+
+                    if !self.err_msg.is_empty() {
+                        ui.colored_label(egui::Color32::RED, &self.err_msg);
+                    }
+
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(10.0);
+
+                    ui.label("Already have an account?");
+                    if ui.button("Log in").clicked() {
+                        self.current_page = Page::Login;
+                        self.err_msg.clear();
+                        self.username.clear();
+                        self.password.clear();
+                    }
+
+                });
+            });
     }
     fn show_login_screen(&mut self, ctx: &egui::Context) {
         if let Ok(event) = self.rx.try_recv() {
@@ -332,6 +444,19 @@ impl MyApp {
                 if !self.err_msg.is_empty() {
                     ui.colored_label(egui::Color32::RED, &self.err_msg);
                 }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+
+                ui.label("Don't have an account?");
+                if ui.button("Sign up").clicked() {
+                    self.current_page = Page::Signin;
+                    self.err_msg.clear();
+                    self.username.clear();
+                    self.password.clear();
+                }
+
             });
         });
     }
@@ -342,13 +467,13 @@ impl MyApp {
         }
         while let Ok(event) = self.rx.try_recv() {
             match event {
-                LoginEvent::ServerRespones((id, success, message)) => {
+                LoginEvent::ServerResponse((id, success, message)) => {
                     if let Some(msg) = self.chat.iter_mut().find(|m| m.id == id) {
                         if success {
                             msg.status = MessageStatus::Sent;
                         } else {
                             msg.status = MessageStatus::Failed;
-                            println!("Message {} failed: {}", id, message);
+                            println!("Message {id} failed: {message}");
                         }
                     }
                 },
@@ -360,7 +485,7 @@ impl MyApp {
                     }
                 },
                 LoginEvent::NewMessage(c) => {
-                    if c.from == self.current_chat {
+                    if c.from == self.current_chat || c.to == self.current_chat {
                         self.chat.push(OnScreenMessage { id: c.id, from: c.from, message: c.message, resp_msg: c.resp_msg, resp_usr: c.resp_user, status: MessageStatus::Sent });
                     }
                 },
@@ -373,21 +498,41 @@ impl MyApp {
 
         egui::SidePanel::left("users_panel").show(ctx, |ui| {
             ui.heading("Contacts");
+            ui.separator();
 
+            ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for contact in &self.contacts {
+                        let selected = *contact == self.current_chat;
+                        if ui.selectable_label(selected, contact).clicked() 
+                            && !selected {
+                                self.current_chat = contact.to_string();
+                                self.chat.clear();
 
-            for contact in &self.contacts {
-                if ui.button(contact).clicked() {
-                        if contact.to_string() != self.current_chat {
-                        self.current_chat = contact.to_string();
-                        self.chat.clear();
-
-                        if let Some(tx) = &self.ws_tx {
-                            let event = Event::ChangeChat((contact.to_string(), 0));
-                            let _ = tx.try_send(event);
-                        }
+                                if let Some(tx) = &self.ws_tx {
+                                    let event = Event::ChangeChat((contact.to_string(), 0));
+                                    let _ = tx.try_send(event);
+                                }
+                            }
+                        
                     }
-                }
-            }
+                });
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                    ui.add_space(10.0);
+
+                    if ui.button("Log Out").clicked()
+                    {
+                        self.current_page = Page::Login;
+                        self.token.clear();
+                        self.username.clear();
+                        self.password.clear();
+                        self.chat.clear();
+                        self.contacts.clear();
+                        self.ws_tx = None;
+                    }
+                });
+            });
+            
         });
 
         egui::TopBottomPanel::bottom("input_panel").show(ctx, |ui| {
@@ -397,10 +542,9 @@ impl MyApp {
                         .desired_width(f32::INFINITY)
                         .hint_text("Type a message..."),
                 );
-                if ui.button("Send").clicked()
-                    || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
-                {
-                    if !self.message_input.trim().is_empty() {
+                if (ui.button("Send").clicked()
+                    || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                    && !self.message_input.trim().is_empty() {
                         let rand_id = format!("{}", uuid::Uuid::new_v4());
 
                         self.chat.push(OnScreenMessage { id: rand_id.clone(), from: self.username.clone(), message: self.message_input.clone(), status: MessageStatus::Sending, resp_msg: self.selected_message.clone(), resp_usr: self.selected_from.clone()});
@@ -409,7 +553,7 @@ impl MyApp {
                             let event = Event::NewMessage(ChatMessage { id: rand_id, from: self.username.clone(), to: self.current_chat.clone(), message: self.message_input.clone() , resp_msg:self.selected_message.clone(), resp_user: self.selected_from.clone() });
                             let _ = tx.try_send(event);
                         }
-                    }
+                        self.message_input.clear();
                 }
             });
         });
@@ -442,6 +586,7 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         match self.current_page {
+            Page::Signin => self.show_signin_screen(ctx),
             Page::Login => self.show_login_screen(ctx),
             Page::MainApp => self.show_main_app(ctx),
         }
@@ -482,7 +627,7 @@ async fn main() -> eframe::Result<()> {
 
     let options = eframe::NativeOptions::default();
     eframe::run_native(
-        "My egui App",
+        "Rustcrab",
         options,
         Box::new(|_cc| Ok(Box::<MyApp>::new(MyApp::new(client)))),
     )

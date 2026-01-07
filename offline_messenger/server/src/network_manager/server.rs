@@ -5,7 +5,7 @@ use crate::network_manager::{
 };
 use axum::{
     Router,
-    routing::{any, get, post},
+    routing::{any, get},
 };
 use axum_server::tls_rustls::RustlsConfig;
 use std::{
@@ -45,7 +45,7 @@ impl Server {
 
         let start_routes: Router = Router::new()
             .route("/login", get(Handlers::login))
-            .route("/signin", post(Handlers::signin))
+            .route("/signin", get(Handlers::signin))
             .with_state(app_state.clone());
         let messenger_routes: Router = Router::new()
             .route("/ws", any(Handlers::ws_handler))
