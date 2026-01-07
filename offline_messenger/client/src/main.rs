@@ -66,6 +66,7 @@ enum LoginEvent {
     ChatDump(Vec<(String, String, Option<String>, Option<String>)>),
     NewMessage(ChatMessage),
     TheList(Vec<String>),
+    ConnectionLost,
 }
 enum Event {
     NewMessage(ChatMessage),
@@ -203,6 +204,8 @@ fn start_websocket(
                         ctx.request_repaint();
                     }
                 }
+                println!("Connection ended");
+                let _ = gui_sender.send(LoginEvent::ConnectionLost);
             },
             Err(err) => {
                 println!("Connection failed: {err}");
@@ -492,10 +495,23 @@ impl MyApp {
                 LoginEvent::TheList(list) => {
                     self.contacts = list;
                 }
+                LoginEvent::ConnectionLost => {
+                    self.current_page = Page::Login;
+                    self.token.clear();
+                    self.username.clear();
+                    self.password.clear();
+                    self.chat.clear();
+                    self.contacts.clear();
+                    self.current_chat.clear();
+                    self.message_input.clear();
+                    self.selected_message = None;
+                    self.selected_from = None;
+                    self.ws_tx = None;
+                    self.err_msg = "Server unreacheble".to_string();
+                }
                 _ => {},
             }
         }
-
         egui::SidePanel::left("users_panel").show(ctx, |ui| {
             ui.heading("Contacts");
             ui.separator();
@@ -508,6 +524,9 @@ impl MyApp {
                             && !selected {
                                 self.current_chat = contact.to_string();
                                 self.chat.clear();
+                                self.message_input.clear();
+                                self.selected_message = None;
+                                self.selected_from = None;
 
                                 if let Some(tx) = &self.ws_tx {
                                     let event = Event::ChangeChat((contact.to_string(), 0));
@@ -528,6 +547,10 @@ impl MyApp {
                         self.password.clear();
                         self.chat.clear();
                         self.contacts.clear();
+                        self.current_chat.clear();
+                        self.message_input.clear();
+                        self.selected_message = None;
+                        self.selected_from = None;
                         self.ws_tx = None;
                     }
                 });
@@ -536,6 +559,24 @@ impl MyApp {
         });
 
         egui::TopBottomPanel::bottom("input_panel").show(ctx, |ui| {
+            if let (Some(m), Some(u)) = (self.selected_message.clone(), self.selected_from.clone()) {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 5.0;
+                    ui.label(egui::RichText::new("Replying to").color(egui::Color32::LIGHT_BLUE));
+                    ui.label(egui::RichText::new(format!("{u}:")).strong());
+                    if m.len() > 30 {
+                        ui.label(egui::RichText::new(format!("{}...", &m[..30])).italics().color(egui::Color32::GRAY));
+                    }
+                    else {
+                        ui.label(egui::RichText::new(m.clone()).italics().color(egui::Color32::GRAY));
+                    }
+                    if ui.small_button("X").clicked() {
+                        self.selected_message = None;
+                        self.selected_from = None;
+                    }
+                });
+            }
+            
             ui.horizontal(|ui| {
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut self.message_input)
@@ -544,7 +585,7 @@ impl MyApp {
                 );
                 if (ui.button("Send").clicked()
                     || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                    && !self.message_input.trim().is_empty() {
+                    && !self.message_input.trim().is_empty() && !self.current_chat.trim().is_empty() {
                         let rand_id = format!("{}", uuid::Uuid::new_v4());
 
                         self.chat.push(OnScreenMessage { id: rand_id.clone(), from: self.username.clone(), message: self.message_input.clone(), status: MessageStatus::Sending, resp_msg: self.selected_message.clone(), resp_usr: self.selected_from.clone()});
@@ -554,6 +595,8 @@ impl MyApp {
                             let _ = tx.try_send(event);
                         }
                         self.message_input.clear();
+                        self.selected_message = None;
+                        self.selected_from = None;
                 }
             });
         });
@@ -564,17 +607,52 @@ impl MyApp {
 
                 for msg in &self.chat {
                     if msg.from == self.username {
-                        let text_color = match msg.status {
-                            MessageStatus::Sending => egui::Color32::GRAY,
-                            MessageStatus::Sent => egui::Color32::WHITE,
-                            MessageStatus::Failed => egui::Color32::RED,
+                        let (bg_color, text_color) = match msg.status {
+                            MessageStatus::Sending => (egui::Color32::from_rgb(165, 42, 0),egui::Color32::GRAY),
+                            MessageStatus::Sent => (egui::Color32::from_rgb(165, 42, 0), egui::Color32::WHITE),
+                            MessageStatus::Failed => (egui::Color32::RED, egui::Color32::WHITE),
                         };
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui|{
-                            ui.label(egui::RichText::new(&msg.message).color(text_color));
+
+                            let bubble = egui::Frame::none().fill(bg_color).rounding(egui::Rounding::same(15.0)).inner_margin(10.0);
+                            bubble.show(ui, |ui| {
+                                ui.set_max_width(300.0);
+                                ui.vertical(|ui| {
+                                    if let (Some(m), Some(u)) = (msg.resp_msg.clone(), msg.resp_usr.clone()) {
+                                        ui.label(egui::RichText::new(format!("Replying to {u}")).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
+                                        ui.label(egui::RichText::new(&m).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
+                                        ui.add_space(2.0);
+                                        ui.separator();
+                                    }
+                                    ui.label(egui::RichText::new(&msg.message).color(text_color));
+                                });
+                            });
+
+                            if ui.small_button("↩").clicked() {
+                                self.selected_message = Some(msg.message.clone());
+                                self.selected_from = Some(msg.from.clone());
+                            }
                         });
                     } else {
                       ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                        ui.label(egui::RichText::new(&msg.message).color(egui::Color32::LIGHT_GRAY));
+                            let bubble = egui::Frame::none().fill(egui::Color32::from_rgb(62, 28, 28)).rounding(egui::Rounding::same(15.0)).inner_margin(10.0);
+                            bubble.show(ui, |ui| {
+                                ui.set_max_width(300.0);
+                                ui.vertical(|ui| {
+                                    if let (Some(m), Some(u)) = (&msg.resp_msg, &msg.resp_usr) {
+                                        ui.label(egui::RichText::new(format!("Replying to {u}")).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
+                                        ui.label(egui::RichText::new(m).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
+                                        ui.add_space(2.0);
+                                        ui.separator();
+                                    }
+                                    ui.label(egui::RichText::new(&msg.message).color(egui::Color32::WHITE));
+                                });
+                            });
+
+                            if ui.small_button("↩").clicked() {
+                                self.selected_message = Some(msg.message.clone());
+                                self.selected_from = Some(msg.from.clone());
+                            }
                       });
                     }
                 }
