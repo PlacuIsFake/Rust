@@ -312,13 +312,11 @@ impl MyApp {
                     self.username.clear();
                     self.password.clear();
                     self.password_again.clear();
+                    self.err_msg.clear();
                     ctx.request_repaint();
                 }
                 LoginEvent::Error(err) => {
                     self.err_msg = err;
-                    self.username.clear();
-                    self.password.clear();
-                    self.password_again.clear();
                 }
                 _ => {}
             }
@@ -341,54 +339,65 @@ impl MyApp {
                 ui.add_space(20.0);
 
                 if ui.button("Sign in").clicked() {
-                    if self.password == self.password_again {
-                        let signin = SigninReq {
-                            username: self.username.clone(),
-                            password: self.password.clone(),
-                        };
-                        let tx_clone = self.tx.clone();
-                        let ctx_clone = ctx.clone();
-                        let client_clone = self.client.clone();
+                    if !self.username.trim().is_empty()
+                    {
+                        if !self.password.trim().is_empty()
+                        {
+                            if self.password == self.password_again {
+                                let signin = SigninReq {
+                                    username: self.username.clone(),
+                                    password: self.password.clone(),
+                                };
+                                let tx_clone = self.tx.clone();
+                                let ctx_clone = ctx.clone();
+                                let client_clone = self.client.clone();
 
-                        tokio::spawn(async move {
-                            let base_url = "https://127.0.0.1:3000";
-                            let resp = match client_clone
-                                .get(format!("{base_url}/signin"))
-                                .json(&signin)
-                                .send()
-                                .await
-                            {
-                                Ok(snd) => match snd.json::<Response>().await {
-                                    Ok(r) => r,
-                                    Err(err) => Response {
-                                        succes: false,
-                                        message: format!(
-                                            "Invalid response from the server after login: {err}"
-                                        ),
-                                    },
-                                },
-                                Err(err) => Response {
-                                    succes: false,
-                                    message: format!(
-                                        "Error while sending the login request: {err}"
-                                    ),
-                                },
-                            };
+                                tokio::spawn(async move {
+                                    let base_url = "https://127.0.0.1:3000";
+                                    let resp = match client_clone
+                                        .get(format!("{base_url}/signin"))
+                                        .json(&signin)
+                                        .send()
+                                        .await
+                                    {
+                                        Ok(snd) => match snd.json::<Response>().await {
+                                            Ok(r) => r,
+                                            Err(err) => Response {
+                                                succes: false,
+                                                message: format!(
+                                                    "Invalid response from the server after login: {err}"
+                                                ),
+                                            },
+                                        },
+                                        Err(err) => Response {
+                                            succes: false,
+                                            message: format!(
+                                                "Error while sending the login request: {err}"
+                                            ),
+                                        },
+                                    };
 
-                            let result = match resp.succes {
-                                true => LoginEvent::Signin,
-                                false => LoginEvent::Error(resp.message),
-                            };
+                                    let result = match resp.succes {
+                                        true => LoginEvent::Signin,
+                                        false => LoginEvent::Error(resp.message),
+                                    };
 
-                            let _ = tx_clone.send(result);
-                            ctx_clone.request_repaint();
-                        });
+                                    let _ = tx_clone.send(result);
+                                    ctx_clone.request_repaint();
+                                });
+                            } else {
+                                self.err_msg.clear();
+                                self.err_msg = "The two passwords are not identical".to_string();
+                                ctx.request_repaint();
+                            }
+                        } else {
+                            self.err_msg.clear();
+                            self.err_msg = "Please insert password".to_string();
+                            ctx.request_repaint();
+                        }
                     } else {
                         self.err_msg.clear();
-                        self.err_msg = "The two passwords are not identical".to_string();
-                        self.username.clear();
-                        self.password.clear();
-                        self.password_again.clear();
+                        self.err_msg = "Please insert username".to_string();
                         ctx.request_repaint();
                     }
                 }
@@ -407,6 +416,7 @@ impl MyApp {
                     self.err_msg.clear();
                     self.username.clear();
                     self.password.clear();
+                    self.password_again.clear();
                 }
             });
         });
@@ -450,47 +460,59 @@ impl MyApp {
                 ui.add_space(20.0);
 
                 if ui.button("Log In").clicked() {
-                    let login = LoginReq {
-                        username: self.username.clone(),
-                        password: self.password.clone(),
-                    };
-                    let tx_clone = self.tx.clone();
-                    let ctx_clone = ctx.clone();
-                    let client_clone = self.client.clone();
-
-                    tokio::spawn(async move {
-                        let base_url = "https://127.0.0.1:3000";
-                        let resp = match client_clone
-                            .get(format!("{base_url}/login"))
-                            .json(&login)
-                            .send()
-                            .await
+                    if !self.username.trim().is_empty()
+                    {
+                        if !self.password.trim().is_empty()
                         {
-                            Ok(snd) => match snd.json::<LoginResp>().await {
-                                Ok(r) => r,
-                                Err(err) => LoginResp {
-                                    succes: false,
-                                    token: "".to_string(),
-                                    message: format!(
-                                        "Invalid response from the server after login: {err}"
-                                    ),
-                                },
-                            },
-                            Err(err) => LoginResp {
-                                succes: false,
-                                token: "".to_string(),
-                                message: format!("Error while sending the login request: {err}"),
-                            },
-                        };
+                            let login = LoginReq {
+                                username: self.username.clone(),
+                                password: self.password.clone(),
+                            };
+                            let tx_clone = self.tx.clone();
+                            let ctx_clone = ctx.clone();
+                            let client_clone = self.client.clone();
 
-                        let result = match resp.succes {
-                            true => LoginEvent::Login(resp.token),
-                            false => LoginEvent::Error(resp.message),
-                        };
+                            tokio::spawn(async move {
+                                let base_url = "https://127.0.0.1:3000";
+                                let resp = match client_clone
+                                    .get(format!("{base_url}/login"))
+                                    .json(&login)
+                                    .send()
+                                    .await
+                                {
+                                    Ok(snd) => match snd.json::<LoginResp>().await {
+                                        Ok(r) => r,
+                                        Err(err) => LoginResp {
+                                            succes: false,
+                                            token: "".to_string(),
+                                            message: format!(
+                                                "Invalid response from the server after login: {err}"
+                                            ),
+                                        },
+                                    },
+                                    Err(err) => LoginResp {
+                                        succes: false,
+                                        token: "".to_string(),
+                                        message: format!("Error while sending the login request: {err}"),
+                                    },
+                                };
 
-                        let _ = tx_clone.send(result);
-                        ctx_clone.request_repaint();
-                    });
+                                let result = match resp.succes {
+                                    true => LoginEvent::Login(resp.token),
+                                    false => LoginEvent::Error(resp.message),
+                                };
+
+                                let _ = tx_clone.send(result);
+                                ctx_clone.request_repaint();
+                            });
+                        } else {
+                            self.err_msg.clear();
+                            self.err_msg = "Please insert password".to_string();
+                        }
+                    } else {
+                        self.err_msg.clear();
+                        self.err_msg = "Please insert username".to_string();
+                    }
                 }
 
                 if !self.err_msg.is_empty() {
