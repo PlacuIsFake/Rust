@@ -177,14 +177,14 @@ impl Handlers {
         let (mut sender, mut receiver) = socket.split();
         let session_info;
         if let Some(Ok(Message::Text(raw_json))) = receiver.next().await {
-                let message: Result<SessionInfo, _> = serde_json::from_str(&raw_json);
-                session_info = match message {
-                    Ok(m) => m,
-                    Err(err) => {
-                        println!("Error at the start message: {err}");
-                        return;
-                    }
-                };
+            let message: Result<SessionInfo, _> = serde_json::from_str(&raw_json);
+            session_info = match message {
+                Ok(m) => m,
+                Err(err) => {
+                    println!("Error at the start message: {err}");
+                    return;
+                }
+            };
         } else {
             println!("Error at the start message: idk");
             return;
@@ -351,13 +351,15 @@ impl Handlers {
                                                 for e in s {
                                                     if *e.0 != token {
                                                         let tx = e.1;
-                                                        match tx.send(InternalMessage::Notification {
-                                                            sender: from.clone(),
-                                                            reciever: to.clone(),
-                                                            content: message.clone(),
-                                                            resp_msg: Some(r_m.clone()),
-                                                            resp_user: Some(r_u.clone()),
-                                                        }) {
+                                                        match tx.send(
+                                                            InternalMessage::Notification {
+                                                                sender: from.clone(),
+                                                                reciever: to.clone(),
+                                                                content: message.clone(),
+                                                                resp_msg: Some(r_m.clone()),
+                                                                resp_user: Some(r_u.clone()),
+                                                            },
+                                                        ) {
                                                             Ok(_) => {}
                                                             Err(err) => println!(
                                                                 "Error while sending the notification to the receiver: {err}"
@@ -461,13 +463,15 @@ impl Handlers {
                                                 for e in s {
                                                     if *e.0 != token {
                                                         let tx = e.1;
-                                                        match tx.send(InternalMessage::Notification {
-                                                            sender: from.clone(),
-                                                            reciever: to.clone(),
-                                                            content: message.clone(),
-                                                            resp_msg: None,
-                                                            resp_user: None,
-                                                        }) {
+                                                        match tx.send(
+                                                            InternalMessage::Notification {
+                                                                sender: from.clone(),
+                                                                reciever: to.clone(),
+                                                                content: message.clone(),
+                                                                resp_msg: None,
+                                                                resp_user: None,
+                                                            },
+                                                        ) {
                                                             Ok(_) => {}
                                                             Err(err) => println!(
                                                                 "Error while sending the notification to the receiver: {err}"

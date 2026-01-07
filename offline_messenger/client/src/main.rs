@@ -1,12 +1,14 @@
 use core::f32;
 use eframe::egui;
-use futures_util::{StreamExt, SinkExt};
+use futures_util::{SinkExt, StreamExt};
 use reqwest::Certificate;
 use serde::{Deserialize, Serialize};
-use tokio_tungstenite::{connect_async_tls_with_config};
 use std::{
-    fs, path::PathBuf, sync::mpsc::{Receiver, Sender, channel}
+    fs,
+    path::PathBuf,
+    sync::mpsc::{Receiver, Sender, channel},
 };
+use tokio_tungstenite::connect_async_tls_with_config;
 
 #[derive(Deserialize, Serialize, Clone)]
 struct SigninReq {
@@ -131,13 +133,15 @@ fn start_websocket(
     let session_info_clone = session_info.clone();
     tokio::spawn(async move {
         let url = "wss://127.0.0.1:3000/ws";
-        let connector = match native_tls::TlsConnector::builder().danger_accept_invalid_certs(true).build()
+        let connector = match native_tls::TlsConnector::builder()
+            .danger_accept_invalid_certs(true)
+            .build()
         {
             Ok(c) => c,
             Err(err) => {
                 println!("Error while building connector: {err}");
                 return;
-            },
+            }
         };
 
         let conn = tokio_tungstenite::Connector::NativeTls(connector);
@@ -146,32 +150,55 @@ fn start_websocket(
             Ok((ws_stream, _)) => {
                 let (mut wr, mut rd) = ws_stream.split();
                 tokio::spawn(async move {
-                    
-                    if let Ok(msg_back) = serde_json::to_string(&session_info){
-                        let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                    if let Ok(msg_back) = serde_json::to_string(&session_info) {
+                        let _ = wr
+                            .send(tokio_tungstenite::tungstenite::Message::Text(
+                                msg_back.into(),
+                            ))
+                            .await;
                     }
 
                     while let Some(msg) = gui_msg_rx.recv().await {
                         match msg {
                             Event::NewMessage(c) => {
-                                let ceva = WsMessage::SendMessage { id: c.id, token: session_info_clone.token.clone(), from: c.from, to: c.to, message: c.message, resp_msg: c.resp_msg, resp_user: c.resp_user };
-                                if let Ok(msg_back) = serde_json::to_string(&ceva)
-                                {
-                                    let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                                let ceva = WsMessage::SendMessage {
+                                    id: c.id,
+                                    token: session_info_clone.token.clone(),
+                                    from: c.from,
+                                    to: c.to,
+                                    message: c.message,
+                                    resp_msg: c.resp_msg,
+                                    resp_user: c.resp_user,
+                                };
+                                if let Ok(msg_back) = serde_json::to_string(&ceva) {
+                                    let _ = wr
+                                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                                            msg_back.into(),
+                                        ))
+                                        .await;
                                 }
                             }
                             Event::ChangeChat(c) => {
-                                let ceva = WsMessage::GetMessage { from: c.0, idx: c.1 };
-                                if let Ok(msg_back) = serde_json::to_string(&ceva)
-                                {
-                                    let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                                let ceva = WsMessage::GetMessage {
+                                    from: c.0,
+                                    idx: c.1,
+                                };
+                                if let Ok(msg_back) = serde_json::to_string(&ceva) {
+                                    let _ = wr
+                                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                                            msg_back.into(),
+                                        ))
+                                        .await;
                                 }
-                            },
+                            }
                             Event::GetUsersList(user) => {
                                 let ceva = WsMessage::GetUserList { user };
-                                if let Ok(msg_back) = serde_json::to_string(&ceva)
-                                {
-                                    let _ = wr.send(tokio_tungstenite::tungstenite::Message::Text(msg_back.into())).await;
+                                if let Ok(msg_back) = serde_json::to_string(&ceva) {
+                                    let _ = wr
+                                        .send(tokio_tungstenite::tungstenite::Message::Text(
+                                            msg_back.into(),
+                                        ))
+                                        .await;
                                 }
                             }
                         }
@@ -182,34 +209,50 @@ fn start_websocket(
                     if let tokio_tungstenite::tungstenite::Message::Text(raw_json) = msg {
                         let message: Result<WsMessageBack, _> = serde_json::from_str(&raw_json);
                         match message {
-                            Ok(WsMessageBack::Message { from: msg_from, to: msg_to, message: msg_content, resp_msg: r_m, resp_user: r_u}) => {
+                            Ok(WsMessageBack::Message {
+                                from: msg_from,
+                                to: msg_to,
+                                message: msg_content,
+                                resp_msg: r_m,
+                                resp_user: r_u,
+                            }) => {
                                 let rand_id = format!("{}", uuid::Uuid::new_v4());
-                                let _ = gui_sender.send(LoginEvent::NewMessage(ChatMessage { id: rand_id, from: msg_from, to: msg_to, message: msg_content, resp_msg: r_m, resp_user: r_u }));
-                            },
-                            Ok(WsMessageBack::Response { id, succes, message }) =>
-                            {
-                                let _ = gui_sender.send(LoginEvent::ServerResponse((id, succes, message)));
-                            },
-                            Ok(WsMessageBack::Chat { messages }) =>
-                            {
+                                let _ = gui_sender.send(LoginEvent::NewMessage(ChatMessage {
+                                    id: rand_id,
+                                    from: msg_from,
+                                    to: msg_to,
+                                    message: msg_content,
+                                    resp_msg: r_m,
+                                    resp_user: r_u,
+                                }));
+                            }
+                            Ok(WsMessageBack::Response {
+                                id,
+                                succes,
+                                message,
+                            }) => {
+                                let _ = gui_sender
+                                    .send(LoginEvent::ServerResponse((id, succes, message)));
+                            }
+                            Ok(WsMessageBack::Chat { messages }) => {
                                 let _ = gui_sender.send(LoginEvent::ChatDump(messages));
-                            },
+                            }
                             Ok(WsMessageBack::UserList { list }) => {
                                 let _ = gui_sender.send(LoginEvent::TheList(list));
-                            },
+                            }
                             Err(err) => {
                                 println!("Error while recieving message from server: {err}");
-                            },
+                            }
                         }
                         ctx.request_repaint();
                     }
                 }
                 println!("Connection ended");
                 let _ = gui_sender.send(LoginEvent::ConnectionLost);
-            },
+            }
             Err(err) => {
                 println!("Connection failed: {err}");
-            },
+            }
         };
     });
     Some(gui_msg_tx)
@@ -277,97 +320,96 @@ impl MyApp {
                     self.password.clear();
                     self.password_again.clear();
                 }
-                _ => {},
+                _ => {}
             }
         }
-            egui::CentralPanel::default().show(ctx, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(50.0);
-                    ui.heading("Rustcrab");
-                    ui.add_space(20.0);
-                    
-                    ui.label("Username");
-                    ui.text_edit_singleline(&mut self.username);
-                    ui.add_space(10.0);
-                    ui.label("Password");
-                    ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
-                    ui.add_space(10.0);
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                ui.add_space(50.0);
+                ui.heading("Rustcrab");
+                ui.add_space(20.0);
 
-                    ui.label("Password again");
-                    ui.add(egui::TextEdit::singleline(&mut self.password_again).password(true));
-                    ui.add_space(20.0);
+                ui.label("Username");
+                ui.text_edit_singleline(&mut self.username);
+                ui.add_space(10.0);
+                ui.label("Password");
+                ui.add(egui::TextEdit::singleline(&mut self.password).password(true));
+                ui.add_space(10.0);
 
-                    if ui.button("Sign in").clicked() {
-                        if self.password == self.password_again {
-                            let signin = SigninReq {
-                                username: self.username.clone(),
-                                password: self.password.clone(),
+                ui.label("Password again");
+                ui.add(egui::TextEdit::singleline(&mut self.password_again).password(true));
+                ui.add_space(20.0);
+
+                if ui.button("Sign in").clicked() {
+                    if self.password == self.password_again {
+                        let signin = SigninReq {
+                            username: self.username.clone(),
+                            password: self.password.clone(),
+                        };
+                        let tx_clone = self.tx.clone();
+                        let ctx_clone = ctx.clone();
+                        let client_clone = self.client.clone();
+
+                        tokio::spawn(async move {
+                            let base_url = "https://127.0.0.1:3000";
+                            let resp = match client_clone
+                                .get(format!("{base_url}/signin"))
+                                .json(&signin)
+                                .send()
+                                .await
+                            {
+                                Ok(snd) => match snd.json::<Response>().await {
+                                    Ok(r) => r,
+                                    Err(err) => Response {
+                                        succes: false,
+                                        message: format!(
+                                            "Invalid response from the server after login: {err}"
+                                        ),
+                                    },
+                                },
+                                Err(err) => Response {
+                                    succes: false,
+                                    message: format!(
+                                        "Error while sending the login request: {err}"
+                                    ),
+                                },
                             };
-                            let tx_clone = self.tx.clone();
-                            let ctx_clone = ctx.clone();
-                            let client_clone = self.client.clone();
 
-                            tokio::spawn(async move {
-                                let base_url = "https://127.0.0.1:3000";
-                                let resp = match client_clone
-                                        .get(format!("{base_url}/signin"))
-                                        .json(&signin)
-                                        .send()
-                                        .await
-                                    {
-                                        Ok(snd) => match snd.json::<Response>().await {
-                                            Ok(r) => r,
-                                            Err(err) => Response {
-                                                succes: false,
-                                                message: format!(
-                                                    "Invalid response from the server after login: {err}"
-                                                ),
-                                            },
-                                        },
-                                        Err(err) => Response {
-                                            succes: false,
-                                            message: format!("Error while sending the login request: {err}"),
-                                        },
-                                    };
+                            let result = match resp.succes {
+                                true => LoginEvent::Signin,
+                                false => LoginEvent::Error(resp.message),
+                            };
 
-                                    let result = match resp.succes {
-                                        true => LoginEvent::Signin,
-                                        false => LoginEvent::Error(resp.message),
-                                    };
-
-                                    let _ = tx_clone.send(result);
-                                    ctx_clone.request_repaint();
-                                });
-                        }
-                        else 
-                        {
-                            self.err_msg.clear();
-                            self.err_msg = "The two passwords are not identical".to_string();
-                            self.username.clear();
-                            self.password.clear();
-                            self.password_again.clear();
-                            ctx.request_repaint();
-                        }
-                    }
-
-                    if !self.err_msg.is_empty() {
-                        ui.colored_label(egui::Color32::RED, &self.err_msg);
-                    }
-
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-
-                    ui.label("Already have an account?");
-                    if ui.button("Log in").clicked() {
-                        self.current_page = Page::Login;
+                            let _ = tx_clone.send(result);
+                            ctx_clone.request_repaint();
+                        });
+                    } else {
                         self.err_msg.clear();
+                        self.err_msg = "The two passwords are not identical".to_string();
                         self.username.clear();
                         self.password.clear();
+                        self.password_again.clear();
+                        ctx.request_repaint();
                     }
+                }
 
-                });
+                if !self.err_msg.is_empty() {
+                    ui.colored_label(egui::Color32::RED, &self.err_msg);
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+
+                ui.label("Already have an account?");
+                if ui.button("Log in").clicked() {
+                    self.current_page = Page::Login;
+                    self.err_msg.clear();
+                    self.username.clear();
+                    self.password.clear();
+                }
             });
+        });
     }
     fn show_login_screen(&mut self, ctx: &egui::Context) {
         if let Ok(event) = self.rx.try_recv() {
@@ -376,14 +418,21 @@ impl MyApp {
                     self.token = token;
                     self.current_page = Page::MainApp;
 
-                    let tx = start_websocket(SessionInfo { username: self.username.clone(), token: self.token.clone() }, ctx.clone(), self.tx.clone());
+                    let tx = start_websocket(
+                        SessionInfo {
+                            username: self.username.clone(),
+                            token: self.token.clone(),
+                        },
+                        ctx.clone(),
+                        self.tx.clone(),
+                    );
                     self.ws_tx = tx;
                     ctx.request_repaint();
                 }
                 LoginEvent::Error(err) => {
                     self.err_msg = err;
                 }
-                _ => {},
+                _ => {}
             }
         }
 
@@ -459,7 +508,6 @@ impl MyApp {
                     self.username.clear();
                     self.password.clear();
                 }
-
             });
         });
     }
@@ -479,19 +527,33 @@ impl MyApp {
                             println!("Message {id} failed: {message}");
                         }
                     }
-                },
+                }
                 LoginEvent::ChatDump(messages) => {
                     self.chat.clear();
                     for e in messages {
                         let rand_id = format!("{}", uuid::Uuid::new_v4());
-                        self.chat.push(OnScreenMessage { id: rand_id, from: e.0, message: e.1, status: MessageStatus::Sent, resp_msg: e.2, resp_usr: e.3 });
+                        self.chat.push(OnScreenMessage {
+                            id: rand_id,
+                            from: e.0,
+                            message: e.1,
+                            status: MessageStatus::Sent,
+                            resp_msg: e.2,
+                            resp_usr: e.3,
+                        });
                     }
-                },
+                }
                 LoginEvent::NewMessage(c) => {
                     if c.from == self.current_chat || c.to == self.current_chat {
-                        self.chat.push(OnScreenMessage { id: c.id, from: c.from, message: c.message, resp_msg: c.resp_msg, resp_usr: c.resp_user, status: MessageStatus::Sent });
+                        self.chat.push(OnScreenMessage {
+                            id: c.id,
+                            from: c.from,
+                            message: c.message,
+                            resp_msg: c.resp_msg,
+                            resp_usr: c.resp_user,
+                            status: MessageStatus::Sent,
+                        });
                     }
-                },
+                }
                 LoginEvent::TheList(list) => {
                     self.contacts = list;
                 }
@@ -509,19 +571,21 @@ impl MyApp {
                     self.ws_tx = None;
                     self.err_msg = "Server unreacheble".to_string();
                 }
-                _ => {},
+                _ => {}
             }
         }
         egui::SidePanel::left("users_panel").show(ctx, |ui| {
             ui.heading("Contacts");
             ui.separator();
 
-            ui.allocate_ui_with_layout(egui::vec2(ui.available_width(), ui.available_height()), egui::Layout::top_down(egui::Align::Min), |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for contact in &self.contacts {
-                        let selected = *contact == self.current_chat;
-                        if ui.selectable_label(selected, contact).clicked() 
-                            && !selected {
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for contact in &self.contacts {
+                            let selected = *contact == self.current_chat;
+                            if ui.selectable_label(selected, contact).clicked() && !selected {
                                 self.current_chat = contact.to_string();
                                 self.chat.clear();
                                 self.message_input.clear();
@@ -533,42 +597,48 @@ impl MyApp {
                                     let _ = tx.try_send(event);
                                 }
                             }
-                        
-                    }
-                });
-                ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                    ui.add_space(10.0);
+                        }
+                    });
+                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                        ui.add_space(10.0);
 
-                    if ui.button("Log Out").clicked()
-                    {
-                        self.current_page = Page::Login;
-                        self.token.clear();
-                        self.username.clear();
-                        self.password.clear();
-                        self.chat.clear();
-                        self.contacts.clear();
-                        self.current_chat.clear();
-                        self.message_input.clear();
-                        self.selected_message = None;
-                        self.selected_from = None;
-                        self.ws_tx = None;
-                    }
-                });
-            });
-            
+                        if ui.button("Log Out").clicked() {
+                            self.current_page = Page::Login;
+                            self.token.clear();
+                            self.username.clear();
+                            self.password.clear();
+                            self.chat.clear();
+                            self.contacts.clear();
+                            self.current_chat.clear();
+                            self.message_input.clear();
+                            self.selected_message = None;
+                            self.selected_from = None;
+                            self.ws_tx = None;
+                        }
+                    });
+                },
+            );
         });
 
         egui::TopBottomPanel::bottom("input_panel").show(ctx, |ui| {
-            if let (Some(m), Some(u)) = (self.selected_message.clone(), self.selected_from.clone()) {
+            if let (Some(m), Some(u)) = (self.selected_message.clone(), self.selected_from.clone())
+            {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 5.0;
                     ui.label(egui::RichText::new("Replying to").color(egui::Color32::LIGHT_BLUE));
                     ui.label(egui::RichText::new(format!("{u}:")).strong());
                     if m.len() > 30 {
-                        ui.label(egui::RichText::new(format!("{}...", &m[..30])).italics().color(egui::Color32::GRAY));
-                    }
-                    else {
-                        ui.label(egui::RichText::new(m.clone()).italics().color(egui::Color32::GRAY));
+                        ui.label(
+                            egui::RichText::new(format!("{}...", &m[..30]))
+                                .italics()
+                                .color(egui::Color32::GRAY),
+                        );
+                    } else {
+                        ui.label(
+                            egui::RichText::new(m.clone())
+                                .italics()
+                                .color(egui::Color32::GRAY),
+                        );
                     }
                     if ui.small_button("X").clicked() {
                         self.selected_message = None;
@@ -576,7 +646,7 @@ impl MyApp {
                     }
                 });
             }
-            
+
             ui.horizontal(|ui| {
                 let resp = ui.add(
                     egui::TextEdit::singleline(&mut self.message_input)
@@ -585,78 +655,137 @@ impl MyApp {
                 );
                 if (ui.button("Send").clicked()
                     || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
-                    && !self.message_input.trim().is_empty() && !self.current_chat.trim().is_empty() {
-                        let rand_id = format!("{}", uuid::Uuid::new_v4());
+                    && !self.message_input.trim().is_empty()
+                    && !self.current_chat.trim().is_empty()
+                {
+                    let rand_id = format!("{}", uuid::Uuid::new_v4());
 
-                        self.chat.push(OnScreenMessage { id: rand_id.clone(), from: self.username.clone(), message: self.message_input.clone(), status: MessageStatus::Sending, resp_msg: self.selected_message.clone(), resp_usr: self.selected_from.clone()});
+                    self.chat.push(OnScreenMessage {
+                        id: rand_id.clone(),
+                        from: self.username.clone(),
+                        message: self.message_input.clone(),
+                        status: MessageStatus::Sending,
+                        resp_msg: self.selected_message.clone(),
+                        resp_usr: self.selected_from.clone(),
+                    });
 
-                        if let Some(tx) = &self.ws_tx {
-                            let event = Event::NewMessage(ChatMessage { id: rand_id, from: self.username.clone(), to: self.current_chat.clone(), message: self.message_input.clone() , resp_msg:self.selected_message.clone(), resp_user: self.selected_from.clone() });
-                            let _ = tx.try_send(event);
-                        }
-                        self.message_input.clear();
-                        self.selected_message = None;
-                        self.selected_from = None;
+                    if let Some(tx) = &self.ws_tx {
+                        let event = Event::NewMessage(ChatMessage {
+                            id: rand_id,
+                            from: self.username.clone(),
+                            to: self.current_chat.clone(),
+                            message: self.message_input.clone(),
+                            resp_msg: self.selected_message.clone(),
+                            resp_user: self.selected_from.clone(),
+                        });
+                        let _ = tx.try_send(event);
+                    }
+                    self.message_input.clear();
+                    self.selected_message = None;
+                    self.selected_from = None;
                 }
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            egui::ScrollArea::vertical().auto_shrink([false, false]).stick_to_bottom(true).show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 10.0;
+            egui::ScrollArea::vertical()
+                .auto_shrink([false, false])
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 10.0;
 
-                for msg in &self.chat {
-                    if msg.from == self.username {
-                        let (bg_color, text_color) = match msg.status {
-                            MessageStatus::Sending => (egui::Color32::from_rgb(165, 42, 0),egui::Color32::GRAY),
-                            MessageStatus::Sent => (egui::Color32::from_rgb(165, 42, 0), egui::Color32::WHITE),
-                            MessageStatus::Failed => (egui::Color32::RED, egui::Color32::WHITE),
-                        };
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui|{
-
-                            let bubble = egui::Frame::none().fill(bg_color).rounding(egui::Rounding::same(15.0)).inner_margin(10.0);
-                            bubble.show(ui, |ui| {
-                                ui.set_max_width(300.0);
-                                ui.vertical(|ui| {
-                                    if let (Some(m), Some(u)) = (msg.resp_msg.clone(), msg.resp_usr.clone()) {
-                                        ui.label(egui::RichText::new(format!("Replying to {u}")).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
-                                        ui.label(egui::RichText::new(&m).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
-                                        ui.add_space(2.0);
-                                        ui.separator();
-                                    }
-                                    ui.label(egui::RichText::new(&msg.message).color(text_color));
+                    for msg in &self.chat {
+                        if msg.from == self.username {
+                            let (bg_color, text_color) = match msg.status {
+                                MessageStatus::Sending => {
+                                    (egui::Color32::from_rgb(165, 42, 0), egui::Color32::GRAY)
+                                }
+                                MessageStatus::Sent => {
+                                    (egui::Color32::from_rgb(165, 42, 0), egui::Color32::WHITE)
+                                }
+                                MessageStatus::Failed => (egui::Color32::RED, egui::Color32::WHITE),
+                            };
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                                let bubble = egui::Frame::none()
+                                    .fill(bg_color)
+                                    .rounding(egui::Rounding::same(15.0))
+                                    .inner_margin(10.0);
+                                bubble.show(ui, |ui| {
+                                    ui.set_max_width(300.0);
+                                    ui.vertical(|ui| {
+                                        if let (Some(m), Some(u)) =
+                                            (msg.resp_msg.clone(), msg.resp_usr.clone())
+                                        {
+                                            ui.label(
+                                                egui::RichText::new(format!("Replying to {u}"))
+                                                    .size(10.0)
+                                                    .italics()
+                                                    .color(
+                                                        egui::Color32::LIGHT_GRAY
+                                                            .gamma_multiply(0.8),
+                                                    ),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(&m).size(10.0).italics().color(
+                                                    egui::Color32::LIGHT_GRAY.gamma_multiply(0.8),
+                                                ),
+                                            );
+                                            ui.add_space(2.0);
+                                            ui.separator();
+                                        }
+                                        ui.label(
+                                            egui::RichText::new(&msg.message).color(text_color),
+                                        );
+                                    });
                                 });
-                            });
 
-                            if ui.small_button("↩").clicked() {
-                                self.selected_message = Some(msg.message.clone());
-                                self.selected_from = Some(msg.from.clone());
-                            }
-                        });
-                    } else {
-                      ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                            let bubble = egui::Frame::none().fill(egui::Color32::from_rgb(62, 28, 28)).rounding(egui::Rounding::same(15.0)).inner_margin(10.0);
-                            bubble.show(ui, |ui| {
-                                ui.set_max_width(300.0);
-                                ui.vertical(|ui| {
-                                    if let (Some(m), Some(u)) = (&msg.resp_msg, &msg.resp_usr) {
-                                        ui.label(egui::RichText::new(format!("Replying to {u}")).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
-                                        ui.label(egui::RichText::new(m).size(10.0).italics().color(egui::Color32::LIGHT_GRAY.gamma_multiply(0.8)));
-                                        ui.add_space(2.0);
-                                        ui.separator();
-                                    }
-                                    ui.label(egui::RichText::new(&msg.message).color(egui::Color32::WHITE));
+                                if ui.small_button("↩").clicked() {
+                                    self.selected_message = Some(msg.message.clone());
+                                    self.selected_from = Some(msg.from.clone());
+                                }
+                            });
+                        } else {
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                                let bubble = egui::Frame::none()
+                                    .fill(egui::Color32::from_rgb(62, 28, 28))
+                                    .rounding(egui::Rounding::same(15.0))
+                                    .inner_margin(10.0);
+                                bubble.show(ui, |ui| {
+                                    ui.set_max_width(300.0);
+                                    ui.vertical(|ui| {
+                                        if let (Some(m), Some(u)) = (&msg.resp_msg, &msg.resp_usr) {
+                                            ui.label(
+                                                egui::RichText::new(format!("Replying to {u}"))
+                                                    .size(10.0)
+                                                    .italics()
+                                                    .color(
+                                                        egui::Color32::LIGHT_GRAY
+                                                            .gamma_multiply(0.8),
+                                                    ),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(m).size(10.0).italics().color(
+                                                    egui::Color32::LIGHT_GRAY.gamma_multiply(0.8),
+                                                ),
+                                            );
+                                            ui.add_space(2.0);
+                                            ui.separator();
+                                        }
+                                        ui.label(
+                                            egui::RichText::new(&msg.message)
+                                                .color(egui::Color32::WHITE),
+                                        );
+                                    });
                                 });
-                            });
 
-                            if ui.small_button("↩").clicked() {
-                                self.selected_message = Some(msg.message.clone());
-                                self.selected_from = Some(msg.from.clone());
-                            }
-                      });
+                                if ui.small_button("↩").clicked() {
+                                    self.selected_message = Some(msg.message.clone());
+                                    self.selected_from = Some(msg.from.clone());
+                                }
+                            });
+                        }
                     }
-                }
-            });
+                });
         });
     }
 }
