@@ -605,6 +605,8 @@ impl MyApp {
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.visuals_mut().selection.bg_fill = egui::Color32::from_rgb(165, 42, 0);
+                        ui.visuals_mut().selection.stroke = egui::Stroke::new(1.0, egui::Color32::BLACK);
                         for contact in &self.contacts {
                             let selected = *contact == self.current_chat;
                             if ui.selectable_label(selected, contact).clicked() && !selected {
@@ -752,8 +754,8 @@ impl MyApp {
                                                     egui::Color32::LIGHT_GRAY.gamma_multiply(0.8),
                                                 ),
                                             );
-                                            ui.add_space(2.0);
-                                            ui.separator();
+                                            ui.add_space(5.0);
+                                            //ui.separator();
                                         }
                                         ui.label(
                                             egui::RichText::new(&msg.message).color(text_color),
@@ -790,8 +792,8 @@ impl MyApp {
                                                     egui::Color32::LIGHT_GRAY.gamma_multiply(0.8),
                                                 ),
                                             );
-                                            ui.add_space(2.0);
-                                            ui.separator();
+                                            ui.add_space(5.0);
+                                            //ui.separator();
                                         }
                                         ui.label(
                                             egui::RichText::new(&msg.message)
