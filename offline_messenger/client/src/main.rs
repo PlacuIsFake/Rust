@@ -606,7 +606,8 @@ impl MyApp {
                 |ui| {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.visuals_mut().selection.bg_fill = egui::Color32::from_rgb(165, 42, 0);
-                        ui.visuals_mut().selection.stroke = egui::Stroke::new(1.0, egui::Color32::BLACK);
+                        ui.visuals_mut().selection.stroke =
+                            egui::Stroke::new(1.0, egui::Color32::BLACK);
                         for contact in &self.contacts {
                             let selected = *contact == self.current_chat;
                             if ui.selectable_label(selected, contact).clicked() && !selected {
